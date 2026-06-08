@@ -31,7 +31,7 @@ An advanced iOS sensor fusion engine integrating ARKit (VIO), Pedestrian Dead Re
 ### Installation
 
 1. Clone the repository:
-   git clone https://github.com/RayGA17/IMUNavigator.git
+   git clone https://github.com/NalaniFlynns/IMUNavigator.git
 2. Open IMUNavigator.xcodeproj in Xcode.
 3. Select your physical iOS device.
 4. Build and Run.
@@ -66,7 +66,7 @@ This project is licensed under the MIT License.
 ### 安装指南
 
 1. 克隆本仓库到本地:
-   git clone https://github.com/RayGA17/IMUNavigator.git
+   git clone https://github.com/NalaniFlynns/IMUNavigator.git
 2. 在 Xcode 中打开 IMUNavigator.xcodeproj 文件。
 3. 选择你的 iOS 真机设备。
 4. 编译并运行。
