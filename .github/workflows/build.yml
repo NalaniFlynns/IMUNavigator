@@ -13,44 +13,28 @@ jobs:
     - name: 📥 獲取代碼
       uses: actions/checkout@v4
 
-    - name: 🛠️ 自動精簡擴展組件 (繞過無證書編譯限制)
+    - name: ⚙️ 建立全域無簽名設定 (xcconfig)
       run: |
-        gem install xcodeproj
-        ruby -e "
-        require 'xcodeproj'
-        project = Xcodeproj::Project.open('IMUNavigator.xcodeproj')
-        app_target = project.targets.find { |t| t.name == 'IMUNavigator' }
-        ext_target = project.targets.find { |t| t.name == 'INSLiveActivityExtension' }
-        
-        if app_target && ext_target
-          # 移除對擴展的編譯依賴
-          app_target.dependencies.delete_if { |dep| dep.target && dep.target.name == 'INSLiveActivityExtension' }
-          # 移除 Embed Foundation Extensions 拷貝階段
-          app_target.build_phases.delete_if { |bp| bp.class.name.include?('PBXCopyFilesBuildPhase') && bp.respond_to?(:name) && bp.name == 'Embed Foundation Extensions' }
-          # 刪除擴展 Target
-          ext_target.remove_from_project
-          project.save
-          puts '✅ 已自動剝離 INSLiveActivityExtension，準備純淨版編譯！'
-        end
-        "
+        # 建立設定檔，強制要求 Xcode 在所有層級放棄尋找開發者憑證與 Entitlements
+        echo "CODE_SIGNING_ALLOWED = NO" > disable_signing.xcconfig
+        echo "CODE_SIGNING_REQUIRED = NO" >> disable_signing.xcconfig
+        echo "CODE_SIGN_IDENTITY = \"\"" >> disable_signing.xcconfig
+        echo "ENTITLEMENTS_REQUIRED = NO" >> disable_signing.xcconfig
 
-    - name: 🏗️ 直接編譯 App (跳過 Archive 嚴格校驗)
+    - name: 🏗️ 執行純淨編譯 (套用全域設定)
       run: |
         xcodebuild clean build \
           -project IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
-          -sdk iphoneos \
+          -destination 'generic/platform=iOS' \
           -configuration Release \
-          -derivedDataPath ./build_output \
-          CODE_SIGNING_ALLOWED=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGN_IDENTITY="" \
-          AD_HOC_CODE_SIGNING_ALLOWED=YES
+          -xcconfig disable_signing.xcconfig \
+          -derivedDataPath ./build_output
 
     - name: 📦 手動提取並封裝 IPA
       run: |
         mkdir -p build/Payload
-        # 從 DerivedData 中提取生成的 .app 目錄
+        # 從 DerivedData 目錄中精準提取編譯好的 .app
         cp -r ./build_output/Build/Products/Release-iphoneos/IMUNavigator.app build/Payload/
         cd build
         zip -qr IMUNavigator.ipa Payload
