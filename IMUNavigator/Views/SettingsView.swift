@@ -8,12 +8,37 @@ extension View {
 
 struct SettingsView: View {
     @EnvironmentObject var engine: SensorFusionEngine
+    
+    var body: some View {
+        // 🌟 核心优化：使用 equatable() 彻底阻断 Engine 10Hz 刷新导致的 UI 视图重建
+        // 保证所有滑块、开关和输入框 120Hz 丝滑响应，绝不吞手势！
+        SettingsFormContent(engine: engine).equatable()
+    }
+}
+
+struct SettingsFormContent: View, Equatable {
+    var engine: SensorFusionEngine
+    
+    static func == (lhs: SettingsFormContent, rhs: SettingsFormContent) -> Bool {
+        return true 
+    }
+    
     @StateObject private var settings = AppSettings.shared
     @State private var showCalibration = false
     @State private var showAlignment = false
     @FocusState private var isInputActive: Bool
     
     @State private var localNavMode: CoreNavMode = AppSettings.shared.coreNavMode
+    
+    @State private var timeStr: String = ""
+    @State private var spaceStr: String = ""
+    @State private var biasXStr: String = ""
+    @State private var biasYStr: String = ""
+    @State private var biasZStr: String = ""
+    @State private var driftXStr: String = ""
+    @State private var driftYStr: String = ""
+    @State private var zuptAccStr: String = ""
+    @State private var zuptGyroStr: String = ""
     
     var body: some View {
         NavigationView {
@@ -35,9 +60,9 @@ struct SettingsView: View {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
                     
-                    HStack { Text("Bias X"); Spacer(); TextField("X", value: $settings.manualBiasX, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80) }
-                    HStack { Text("Bias Y"); Spacer(); TextField("Y", value: $settings.manualBiasY, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80) }
-                    HStack { Text("Bias Z"); Spacer(); TextField("Z", value: $settings.manualBiasZ, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80) }
+                    HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { if let d = Double($0) { settings.manualBiasX = d } } }
+                    HStack { Text("Bias Y"); Spacer(); TextField("Y", text: $biasYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasYStr) { if let d = Double($0) { settings.manualBiasY = d } } }
+                    HStack { Text("Bias Z"); Spacer(); TextField("Z", text: $biasZStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasZStr) { if let d = Double($0) { settings.manualBiasZ = d } } }
                     
                     Toggle("Enable SLAM Position Correction", isOn: $settings.enableSLAMCorrection)
                     Toggle("Enable Dynamic Calibration (VIO)", isOn: $settings.enableDynamicCalibration)
@@ -56,21 +81,21 @@ struct SettingsView: View {
                     HStack {
                         Label("Global X Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("X", value: $settings.driftCompX, format: .number).keyboardType(.numbersAndPunctuation).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60)
+                        TextField("X", text: $driftXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftXStr) { if let d = Double($0) { settings.driftCompX = d } }
                     }
                     HStack {
                         Label("Global Y Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("Y", value: $settings.driftCompY, format: .number).keyboardType(.numbersAndPunctuation).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60)
+                        TextField("Y", text: $driftYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftYStr) { if let d = Double($0) { settings.driftCompY = d } }
                     }
                 }
                 
                 Section(header: Text("Recording Mode")) {
                     Picker("Mode", selection: $settings.recordingMode) { Text("By Time").tag(RecordingMode.time); Text("By Distance").tag(RecordingMode.distance) }.pickerStyle(SegmentedPickerStyle())
                     if settings.recordingMode == .time {
-                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", value: $settings.recordIntervalTime, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive) }
+                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { settings.recordIntervalTime = d } } }
                     } else {
-                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", value: $settings.recordIntervalSpace, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive) }
+                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { if let d = Double($0) { settings.recordIntervalSpace = d } } }
                     }
                 }
                 
@@ -92,8 +117,8 @@ struct SettingsView: View {
                     Picker("SLAM Filter", selection: $settings.slamFilterMode) { ForEach(SLAMFilterMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
                     Toggle("Enable ZUPT", isOn: $settings.enableZUPT)
                     
-                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", value: $settings.zuptThreshold, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive) }
-                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", value: $settings.zuptGyroThreshold, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive) }
+                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", text: $zuptAccStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptAccStr) { if let d = Double($0) { settings.zuptThreshold = d } } }
+                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", text: $zuptGyroStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptGyroStr) { if let d = Double($0) { settings.zuptGyroThreshold = d } } }
                 }
                 
                 Section(header: Text("UI Toggles & Extra Logging")) {
@@ -112,6 +137,17 @@ struct SettingsView: View {
                     Spacer()
                     Button("Done") { isInputActive = false; endTextEditing() }.font(.headline).foregroundColor(.blue)
                 }
+            }
+            .onAppear {
+                timeStr = String(settings.recordIntervalTime)
+                spaceStr = String(settings.recordIntervalSpace)
+                biasXStr = String(settings.manualBiasX)
+                biasYStr = String(settings.manualBiasY)
+                biasZStr = String(settings.manualBiasZ)
+                driftXStr = String(settings.driftCompX)
+                driftYStr = String(settings.driftCompY)
+                zuptAccStr = String(settings.zuptThreshold)
+                zuptGyroStr = String(settings.zuptGyroThreshold)
             }
         }
     }
