@@ -10,8 +10,6 @@ struct SettingsView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     
     var body: some View {
-        // 🌟 核心优化：使用 equatable() 彻底阻断 Engine 10Hz 刷新导致的 UI 视图重建
-        // 保证所有滑块、开关和输入框 120Hz 丝滑响应，绝不吞手势！
         SettingsFormContent(engine: engine).equatable()
     }
 }
@@ -23,12 +21,28 @@ struct SettingsFormContent: View, Equatable {
         return true 
     }
     
-    @StateObject private var settings = AppSettings.shared
     @State private var showCalibration = false
     @State private var showAlignment = false
     @FocusState private var isInputActive: Bool
     
     @State private var localNavMode: CoreNavMode = AppSettings.shared.coreNavMode
+    @State private var dampingX: Double = AppSettings.shared.dampingX
+    @State private var dampingY: Double = AppSettings.shared.dampingY
+    @State private var enableSLAM: Bool = AppSettings.shared.enableSLAMCorrection
+    @State private var enableDynamicCalib: Bool = AppSettings.shared.enableDynamicCalibration
+    @State private var recordingMode: RecordingMode = AppSettings.shared.recordingMode
+    @State private var showAltitudeChart: Bool = AppSettings.shared.showAltitudeChart
+    @State private var showErrorChart: Bool = AppSettings.shared.showErrorChart
+    @State private var errorChartMode: ErrorChartMode = AppSettings.shared.errorChartMode
+    @State private var showResidualChart: Bool = AppSettings.shared.showResidualChart
+    @State private var storageFormat: StorageFormat = AppSettings.shared.storageFormat
+    @State private var enableBackgroundRecord: Bool = AppSettings.shared.enableBackgroundRecording
+    @State private var slamFilterMode: SLAMFilterMode = AppSettings.shared.slamFilterMode
+    @State private var enableZUPT: Bool = AppSettings.shared.enableZUPT
+    @State private var autoRotateCanvas: Bool = AppSettings.shared.autoRotateCanvas
+    @State private var recordGNSS: Bool = AppSettings.shared.recordGNSS
+    @State private var recordBarometer: Bool = AppSettings.shared.recordBarometer
+    @State private var recordAcceleration: Bool = AppSettings.shared.recordAcceleration
     
     @State private var timeStr: String = ""
     @State private var spaceStr: String = ""
@@ -49,7 +63,7 @@ struct SettingsFormContent: View, Equatable {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .onChange(of: localNavMode) { m in
-                        settings.coreNavMode = m
+                        AppSettings.shared.coreNavMode = m
                         engine.switchNavMode(to: m)
                     }
                     
@@ -60,72 +74,93 @@ struct SettingsFormContent: View, Equatable {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
                     
-                    HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { if let d = Double($0) { settings.manualBiasX = d } } }
-                    HStack { Text("Bias Y"); Spacer(); TextField("Y", text: $biasYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasYStr) { if let d = Double($0) { settings.manualBiasY = d } } }
-                    HStack { Text("Bias Z"); Spacer(); TextField("Z", text: $biasZStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasZStr) { if let d = Double($0) { settings.manualBiasZ = d } } }
+                    HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { if let d = Double($0) { AppSettings.shared.manualBiasX = d } } }
+                    HStack { Text("Bias Y"); Spacer(); TextField("Y", text: $biasYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasYStr) { if let d = Double($0) { AppSettings.shared.manualBiasY = d } } }
+                    HStack { Text("Bias Z"); Spacer(); TextField("Z", text: $biasZStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasZStr) { if let d = Double($0) { AppSettings.shared.manualBiasZ = d } } }
                     
-                    Toggle("Enable SLAM Position Correction", isOn: $settings.enableSLAMCorrection)
-                    Toggle("Enable Dynamic Calibration (VIO)", isOn: $settings.enableDynamicCalibration)
+                    Toggle("Enable SLAM Position Correction", isOn: $enableSLAM)
+                        .onChange(of: enableSLAM) { AppSettings.shared.enableSLAMCorrection = $0 }
+                    Toggle("Enable Dynamic Calibration (VIO)", isOn: $enableDynamicCalib)
+                        .onChange(of: enableDynamicCalib) { AppSettings.shared.enableDynamicCalibration = $0 }
                 }
                 
                 Section(header: Text("Drift Compensation & Damping")) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("X-Axis Damping: \(String(format: "%.2f", settings.dampingX))").font(.caption).foregroundColor(.gray)
-                        Slider(value: $settings.dampingX, in: 0.0...1.0)
+                        Text("X-Axis Damping: \(String(format: "%.2f", dampingX))").font(.caption).foregroundColor(.gray)
+                        Slider(value: $dampingX, in: 0.0...1.0)
+                            .onChange(of: dampingX) { AppSettings.shared.dampingX = $0 }
                     }
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Y-Axis Damping: \(String(format: "%.2f", settings.dampingY))").font(.caption).foregroundColor(.gray)
-                        Slider(value: $settings.dampingY, in: 0.0...1.0)
+                        Text("Y-Axis Damping: \(String(format: "%.2f", dampingY))").font(.caption).foregroundColor(.gray)
+                        Slider(value: $dampingY, in: 0.0...1.0)
+                            .onChange(of: dampingY) { AppSettings.shared.dampingY = $0 }
                     }
                     
                     HStack {
                         Label("Global X Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("X", text: $driftXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftXStr) { if let d = Double($0) { settings.driftCompX = d } }
+                        TextField("X", text: $driftXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftXStr) { if let d = Double($0) { AppSettings.shared.driftCompX = d } }
                     }
                     HStack {
                         Label("Global Y Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("Y", text: $driftYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftYStr) { if let d = Double($0) { settings.driftCompY = d } }
+                        TextField("Y", text: $driftYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftYStr) { if let d = Double($0) { AppSettings.shared.driftCompY = d } }
                     }
                 }
                 
                 Section(header: Text("Recording Mode")) {
-                    Picker("Mode", selection: $settings.recordingMode) { Text("By Time").tag(RecordingMode.time); Text("By Distance").tag(RecordingMode.distance) }.pickerStyle(SegmentedPickerStyle())
-                    if settings.recordingMode == .time {
-                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { settings.recordIntervalTime = d } } }
+                    Picker("Mode", selection: $recordingMode) { Text("By Time").tag(RecordingMode.time); Text("By Distance").tag(RecordingMode.distance) }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .onChange(of: recordingMode) { AppSettings.shared.recordingMode = $0 }
+                    
+                    if recordingMode == .time {
+                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { AppSettings.shared.recordIntervalTime = d } } }
                     } else {
-                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { if let d = Double($0) { settings.recordIntervalSpace = d } } }
+                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { if let d = Double($0) { AppSettings.shared.recordIntervalSpace = d } } }
                     }
                 }
                 
                 Section(header: Text("Charts Display")) {
-                    Toggle("Show Altitude Chart", isOn: $settings.showAltitudeChart)
-                    Toggle("Show Error Chart", isOn: $settings.showErrorChart)
-                    if settings.showErrorChart {
-                        Picker("Error Mode", selection: $settings.errorChartMode) { ForEach(ErrorChartMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }.pickerStyle(SegmentedPickerStyle())
+                    Toggle("Show Altitude Chart", isOn: $showAltitudeChart)
+                        .onChange(of: showAltitudeChart) { AppSettings.shared.showAltitudeChart = $0 }
+                    Toggle("Show Error Chart", isOn: $showErrorChart)
+                        .onChange(of: showErrorChart) { AppSettings.shared.showErrorChart = $0 }
+                    if showErrorChart {
+                        Picker("Error Mode", selection: $errorChartMode) { ForEach(ErrorChartMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .onChange(of: errorChartMode) { AppSettings.shared.errorChartMode = $0 }
                     }
-                    Toggle("Show Residual Chart", isOn: $settings.showResidualChart)
+                    Toggle("Show Residual Chart", isOn: $showResidualChart)
+                        .onChange(of: showResidualChart) { AppSettings.shared.showResidualChart = $0 }
                 }
                 
                 Section(header: Text("Storage & Background")) {
-                    Picker("Database Format", selection: $settings.storageFormat) { Text("JSON File").tag(StorageFormat.json); Text("SQLite Database").tag(StorageFormat.sqlite) }.pickerStyle(SegmentedPickerStyle())
-                    Toggle("Enable Background Logging", isOn: $settings.enableBackgroundRecording)
+                    Picker("Database Format", selection: $storageFormat) { Text("JSON File").tag(StorageFormat.json); Text("SQLite Database").tag(StorageFormat.sqlite) }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .onChange(of: storageFormat) { AppSettings.shared.storageFormat = $0 }
+                    Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
+                        .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
-                    Picker("SLAM Filter", selection: $settings.slamFilterMode) { ForEach(SLAMFilterMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
-                    Toggle("Enable ZUPT", isOn: $settings.enableZUPT)
+                    Picker("SLAM Filter", selection: $slamFilterMode) { ForEach(SLAMFilterMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
+                        .onChange(of: slamFilterMode) { AppSettings.shared.slamFilterMode = $0 }
+                    Toggle("Enable ZUPT", isOn: $enableZUPT)
+                        .onChange(of: enableZUPT) { AppSettings.shared.enableZUPT = $0 }
                     
-                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", text: $zuptAccStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptAccStr) { if let d = Double($0) { settings.zuptThreshold = d } } }
-                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", text: $zuptGyroStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptGyroStr) { if let d = Double($0) { settings.zuptGyroThreshold = d } } }
+                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", text: $zuptAccStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptAccStr) { if let d = Double($0) { AppSettings.shared.zuptThreshold = d } } }
+                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", text: $zuptGyroStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptGyroStr) { if let d = Double($0) { AppSettings.shared.zuptGyroThreshold = d } } }
                 }
                 
                 Section(header: Text("UI Toggles & Extra Logging")) {
-                    Toggle("Auto Rotate (Heading Up)", isOn: $settings.autoRotateCanvas)
-                    Toggle("Log GNSS Data", isOn: $settings.recordGNSS)
-                    Toggle("Log Barometer Alt", isOn: $settings.recordBarometer)
-                    Toggle("Log 3-Axis Accel & Gyro", isOn: $settings.recordAcceleration)
+                    Toggle("Auto Rotate (Heading Up)", isOn: $autoRotateCanvas)
+                        .onChange(of: autoRotateCanvas) { AppSettings.shared.autoRotateCanvas = $0 }
+                    Toggle("Log GNSS Data", isOn: $recordGNSS)
+                        .onChange(of: recordGNSS) { AppSettings.shared.recordGNSS = $0 }
+                    Toggle("Log Barometer Alt", isOn: $recordBarometer)
+                        .onChange(of: recordBarometer) { AppSettings.shared.recordBarometer = $0 }
+                    Toggle("Log 3-Axis Accel & Gyro", isOn: $recordAcceleration)
+                        .onChange(of: recordAcceleration) { AppSettings.shared.recordAcceleration = $0 }
                 }
             }
             .navigationTitle("Configuration")
@@ -139,15 +174,15 @@ struct SettingsFormContent: View, Equatable {
                 }
             }
             .onAppear {
-                timeStr = String(settings.recordIntervalTime)
-                spaceStr = String(settings.recordIntervalSpace)
-                biasXStr = String(settings.manualBiasX)
-                biasYStr = String(settings.manualBiasY)
-                biasZStr = String(settings.manualBiasZ)
-                driftXStr = String(settings.driftCompX)
-                driftYStr = String(settings.driftCompY)
-                zuptAccStr = String(settings.zuptThreshold)
-                zuptGyroStr = String(settings.zuptGyroThreshold)
+                timeStr = String(AppSettings.shared.recordIntervalTime)
+                spaceStr = String(AppSettings.shared.recordIntervalSpace)
+                biasXStr = String(AppSettings.shared.manualBiasX)
+                biasYStr = String(AppSettings.shared.manualBiasY)
+                biasZStr = String(AppSettings.shared.manualBiasZ)
+                driftXStr = String(AppSettings.shared.driftCompX)
+                driftYStr = String(AppSettings.shared.driftCompY)
+                zuptAccStr = String(AppSettings.shared.zuptThreshold)
+                zuptGyroStr = String(AppSettings.shared.zuptGyroThreshold)
             }
         }
     }
