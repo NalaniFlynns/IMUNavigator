@@ -70,7 +70,6 @@ struct SettingsFormContent: View, Equatable {
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
                     Button("Spatial Alignment Lab") { showAlignment = true }.foregroundColor(.orange)
                     
-                    // 这里传入环境对象，因为后续的子视图仍然需要访问 engine
                     NavigationLink(destination: DebugPanelView().environmentObject(engine)) {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
@@ -189,12 +188,16 @@ struct SettingsFormContent: View, Equatable {
     }
 }
 
+class DebugTabController: ObservableObject {
+    @Published var tab: Int = 0
+}
+
 struct DebugPanelView: View {
-    @State private var tab = 0
+    @StateObject private var tabController = DebugTabController()
     
     var body: some View {
         VStack {
-            Picker("", selection: $tab) {
+            Picker("", selection: $tabController.tab) {
                 Text("Sensors").tag(0)
                 Text("ML Info").tag(1)
                 Text("App Logs").tag(2)
@@ -202,7 +205,7 @@ struct DebugPanelView: View {
             .pickerStyle(SegmentedPickerStyle())
             .padding()
             
-            DebugPanelContentView(tab: tab)
+            DebugPanelContentView(tabController: tabController)
         }
         .navigationTitle("Debug Console")
         .navigationBarTitleDisplayMode(.inline)
@@ -210,14 +213,13 @@ struct DebugPanelView: View {
 }
 
 struct DebugPanelContentView: View {
-    var tab: Int
-    
+    @ObservedObject var tabController: DebugTabController
     @EnvironmentObject var engine: SensorFusionEngine
     @ObservedObject var logger = AppLogger.shared
     
     var body: some View {
         ScrollView {
-            if tab == 0 {
+            if tabController.tab == 0 {
                 VStack(alignment: .leading, spacing: 15) {
                     DebugRow(title: "ARKit VIO State", value: engine.debugState.arkitState)
                     DebugRow(title: "AR Pos XYZ", value: String(format: "(%.2f, %.2f, %.2f)", engine.debugState.arkitPos.x, engine.debugState.arkitPos.y, engine.debugState.arkitPos.z))
@@ -230,7 +232,7 @@ struct DebugPanelContentView: View {
                     DebugRow(title: "Mag Compass", value: String(format: "%.1f°", engine.debugState.compassHeading))
                     DebugRow(title: "Barometer Alt", value: String(format: "%.2fm", engine.debugState.baroAlt))
                 }.padding()
-            } else if tab == 1 {
+            } else if tabController.tab == 1 {
                 VStack(alignment: .leading, spacing: 15) {
                     DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
                     DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
