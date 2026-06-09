@@ -70,6 +70,7 @@ struct SettingsFormContent: View, Equatable {
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
                     Button("Spatial Alignment Lab") { showAlignment = true }.foregroundColor(.orange)
                     
+                    // 这里传入环境对象，因为后续的子视图仍然需要访问 engine
                     NavigationLink(destination: DebugPanelView().environmentObject(engine)) {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
@@ -189,9 +190,7 @@ struct SettingsFormContent: View, Equatable {
 }
 
 struct DebugPanelView: View {
-    @EnvironmentObject var engine: SensorFusionEngine
     @State private var tab = 0
-    @ObservedObject var logger = AppLogger.shared
     
     var body: some View {
         VStack {
@@ -203,42 +202,53 @@ struct DebugPanelView: View {
             .pickerStyle(SegmentedPickerStyle())
             .padding()
             
-            ScrollView {
-                if tab == 0 {
-                    VStack(alignment: .leading, spacing: 15) {
-                        DebugRow(title: "ARKit VIO State", value: engine.debugState.arkitState)
-                        DebugRow(title: "AR Pos XYZ", value: String(format: "(%.2f, %.2f, %.2f)", engine.debugState.arkitPos.x, engine.debugState.arkitPos.y, engine.debugState.arkitPos.z))
-                        Divider()
-                        DebugRow(title: "Raw Earth Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawAcc.x, engine.debugState.rawAcc.y, engine.debugState.rawAcc.z))
-                        DebugRow(title: "Corrected Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.correctedAcc.x, engine.debugState.correctedAcc.y, engine.debugState.correctedAcc.z))
-                        DebugRow(title: "Raw Gyro", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawGyro.x, engine.debugState.rawGyro.y, engine.debugState.rawGyro.z))
-                        Divider()
-                        DebugRow(title: "IMU Data FPS", value: String(format: "%.1f Hz", engine.debugState.imuFPS)).foregroundColor(.blue)
-                        DebugRow(title: "Mag Compass", value: String(format: "%.1f°", engine.debugState.compassHeading))
-                        DebugRow(title: "Barometer Alt", value: String(format: "%.2fm", engine.debugState.baroAlt))
-                    }.padding()
-                } else if tab == 1 {
-                    VStack(alignment: .leading, spacing: 15) {
-                        DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
-                        DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
-                        DebugRow(title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
-                        Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .padding(.top)
-                    }.padding()
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(logger.logs, id: \.self) { log in
-                            Text(log).font(.system(size: 10, design: .monospaced)).foregroundColor(.green)
-                            Divider()
-                        }
-                    }.padding()
-                }
-            }
+            DebugPanelContentView(tab: tab)
         }
         .navigationTitle("Debug Console")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DebugPanelContentView: View {
+    var tab: Int
+    
+    @EnvironmentObject var engine: SensorFusionEngine
+    @ObservedObject var logger = AppLogger.shared
+    
+    var body: some View {
+        ScrollView {
+            if tab == 0 {
+                VStack(alignment: .leading, spacing: 15) {
+                    DebugRow(title: "ARKit VIO State", value: engine.debugState.arkitState)
+                    DebugRow(title: "AR Pos XYZ", value: String(format: "(%.2f, %.2f, %.2f)", engine.debugState.arkitPos.x, engine.debugState.arkitPos.y, engine.debugState.arkitPos.z))
+                    Divider()
+                    DebugRow(title: "Raw Earth Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawAcc.x, engine.debugState.rawAcc.y, engine.debugState.rawAcc.z))
+                    DebugRow(title: "Corrected Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.correctedAcc.x, engine.debugState.correctedAcc.y, engine.debugState.correctedAcc.z))
+                    DebugRow(title: "Raw Gyro", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawGyro.x, engine.debugState.rawGyro.y, engine.debugState.rawGyro.z))
+                    Divider()
+                    DebugRow(title: "IMU Data FPS", value: String(format: "%.1f Hz", engine.debugState.imuFPS)).foregroundColor(.blue)
+                    DebugRow(title: "Mag Compass", value: String(format: "%.1f°", engine.debugState.compassHeading))
+                    DebugRow(title: "Barometer Alt", value: String(format: "%.2fm", engine.debugState.baroAlt))
+                }.padding()
+            } else if tab == 1 {
+                VStack(alignment: .leading, spacing: 15) {
+                    DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
+                    DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
+                    DebugRow(title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
+                    Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .padding(.top)
+                }.padding()
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(logger.logs, id: \.self) { log in
+                        Text(log).font(.system(size: 10, design: .monospaced)).foregroundColor(.green)
+                        Divider()
+                    }
+                }.padding()
+            }
+        }
     }
 }
 
