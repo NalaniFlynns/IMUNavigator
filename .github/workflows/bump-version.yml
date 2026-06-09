@@ -18,13 +18,15 @@ jobs:
     
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 
 
-      - run: |
+      - name: Update and Print Versions
+        run: |
           CURRENT_VERSION=$(xcrun agvtool what-marketing-version -terse1)
           CURRENT_BUILD=$(xcrun agvtool what-version -terse)
           
@@ -44,14 +46,16 @@ jobs:
           echo "New Build Number: $NEW_BUILD"
           echo "========================================"
 
-      - run: |
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          if [[ -z $(git status -s) ]]; then
-            exit 0
-          fi
-          
-          git add .
-          git commit -m "chore: bump version to ${{ inputs.version }} (build ${{ inputs.build }})"
-          git push
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ inputs.version }} (build ${{ inputs.build }})"
+          title: "Bump version to ${{ inputs.version }} (build ${{ inputs.build }})"
+          body: |
+            Automated version bump triggered via GitHub Actions.
+            - **New Marketing Version:** ${{ inputs.version }}
+            - **New Build Number:** ${{ inputs.build }}
+          branch: "chore/bump-version-${{ inputs.build }}"
+          base: main
+          delete-branch: true
