@@ -13,9 +13,16 @@ jobs:
     - name: 📥 下载代码仓库
       uses: actions/checkout@v4
 
+    - name: 🧩 强制解析并下载 Swift 依赖包
+      run: |
+        xcodebuild -resolvePackageDependencies \
+          -project IMUNavigator/IMUNavigator.xcodeproj \
+          -scheme IMUNavigator \
+          -destination 'generic/platform=iOS'
+
     - name: 🏗️ 编译 Xcode 项目
       run: |
-        xcodebuild clean archive \
+        xcodebuild archive \
           -project IMUNavigator/IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
           -destination 'generic/platform=iOS' \
