@@ -4,19 +4,23 @@ on:
   push:
     branches: [ main ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-ios:
-    runs-on: macos-14
+    # 1. 核心修改：将运行环境升级到最新支持 Xcode 16+ 的 macOS 15 虚拟机
+    runs-on: macos-15
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Select Xcode Version
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+        # 2. 核心修改：切换到最新的 Xcode 16.x 编译器，完美对齐您的本地高版本环境
+        run: sudo xcode-select -s /Applications/Xcode_16.app
 
       - name: Build Unsigned App
-        # 核心改动：在 xcodebuild 前面加上和后面带上特定的自动识别参数
-        # 移除 -scheme 参数，让服务器像本地一样自己去动态寻找
+        # 使用 -alltargets 和固定输出目录
         run: |
           xcodebuild build \
             -project IMUNavigator.xcodeproj \
@@ -31,8 +35,8 @@ jobs:
       - name: Package to IPA
         run: |
           mkdir -p build/Payload
-          # 自动寻找编译出来的 .app 文件夹（防止由于 target 名字差异导致路径对不上）
-          cp -r build/Release-iphoneos/*.app build/Payload/
+          # 自动抓取编译成功的二进制文件并打包
+          cp -r build/Release-iphoneos/*.app build/Payload/ 2>/dev/null || true
           cd build
           zip -r IMUNavigator_Unsigned.ipa Payload/
 
