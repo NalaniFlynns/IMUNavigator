@@ -1,47 +1,43 @@
-# 自动化工作流的名称
-name: iOS Unsigned Build
+name: Build IMUNavigator Unsigned IPA
 
-# 触发条件：当 main 分支收到代码推送时执行
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build:
-    # 指定运行环境为苹果官方的 macOS 系统
+  build-ios:
     runs-on: macos-14
-
     steps:
-      # 步骤 1：下载仓库代码到服务器
-      - name: Checkout Source Code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 步骤 2：设置 Xcode 的版本
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
-      # 步骤 3：直接编译生成未签名的 .app 文件
-      - name: Compile Unsigned App
+      - name: Build Unsigned App
+        # 针对您的项目名 IMUNavigator 进行了严格的大小写匹配
+        # 增加 CODE_SIGNING_ALLOWED=NO 确保灵动岛等扩展组件也自动关闭签名
         run: |
           xcodebuild clean build \
-            -project MyWorkspace.xcodeproj \
-            -scheme MyScheme \
+            -project IMUNavigator.xcodeproj \
+            -scheme IMUNavigator \
             -configuration Release \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
 
-      # 步骤 4：将编译产物打包成未签名的 .ipa 压缩包
-      - name: Package to Unsigned IPA
+      - name: Package to IPA
         run: |
           mkdir -p build/Payload
-          cp -r build/Release-iphoneos/MyScheme.app build/Payload/
-          cd build && zip -r unsigned_output.ipa Payload/
+          # 自动寻找编译出的主程序包并复制到打包目录
+          cp -r ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/IMUNavigator.app build/Payload/ 2>/dev/null || cp -r build/Release-iphoneos/IMUNavigator.app build/Payload/
+          cd build
+          zip -r IMUNavigator_Unsigned.ipa Payload/
 
-      # 步骤 5：将打包好的无签名 IPA 上传到 GitHub 提供下载
-      - name: Upload Unsigned IPA Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: my-unsigned-app
-          path: build/unsigned_output.ipa
+          name: IMUNavigator-Unsigned-IPA
+          path: build/IMUNavigator_Unsigned.ipa
