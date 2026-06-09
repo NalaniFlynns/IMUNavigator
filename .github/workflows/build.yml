@@ -13,24 +13,24 @@ jobs:
     - name: 📥 下载代码仓库
       uses: actions/checkout@v4
 
-    - name: 🏗️ 编译 Xcode 项目
-      # 增加 -allowProvisioningUpdates 允许自动处理临时的签名状态
+    - name: 🏗️ 编译 Xcode 项目 (跳过 Archive 的严格校验)
       run: |
-        xcodebuild archive \
+        xcodebuild clean build \
           -project IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
-          -destination 'generic/platform=iOS' \
-          -archivePath build/IMUNavigator.xcarchive \
-          -allowProvisioningUpdates \
+          -sdk iphoneos \
+          -configuration Release \
+          -derivedDataPath ./build_output \
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-    - name: 📦 打包为 IPA
+    - name: 📦 手动提取并打包为 IPA
       run: |
         mkdir -p build/Payload
-        cp -r build/IMUNavigator.xcarchive/Products/Applications/IMUNavigator.app build/Payload/
+        # 直接从 DerivedData 中提取编译好的 .app 目录
+        cp -r ./build_output/Build/Products/Release-iphoneos/IMUNavigator.app build/Payload/
         cd build
         zip -qr IMUNavigator.ipa Payload
       
