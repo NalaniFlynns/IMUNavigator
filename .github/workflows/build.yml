@@ -15,24 +15,24 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
       - name: Build Unsigned App
-        # 针对您的项目名 IMUNavigator 进行了严格的大小写匹配
-        # 增加 CODE_SIGNING_ALLOWED=NO 确保灵动岛等扩展组件也自动关闭签名
+        # 核心改动：在 xcodebuild 前面加上和后面带上特定的自动识别参数
+        # 移除 -scheme 参数，让服务器像本地一样自己去动态寻找
         run: |
-          xcodebuild clean build \
+          xcodebuild build \
             -project IMUNavigator.xcodeproj \
-            -scheme IMUNavigator \
             -configuration Release \
             -sdk iphoneos \
+            -alltargets \
+            SYMROOT=$(pwd)/build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            CODE_SIGN_IDENTITY=""
 
       - name: Package to IPA
         run: |
           mkdir -p build/Payload
-          # 自动寻找编译出的主程序包并复制到打包目录
-          cp -r ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/IMUNavigator.app build/Payload/ 2>/dev/null || cp -r build/Release-iphoneos/IMUNavigator.app build/Payload/
+          # 自动寻找编译出来的 .app 文件夹（防止由于 target 名字差异导致路径对不上）
+          cp -r build/Release-iphoneos/*.app build/Payload/
           cd build
           zip -r IMUNavigator_Unsigned.ipa Payload/
 
