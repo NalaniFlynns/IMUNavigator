@@ -1,46 +1,81 @@
-name: Build iOS IPA (Unsigned)
+# Set the name of your workflow
+name: IOSBuilder
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch: 
+# Controls when the action will run.
+# [workflow_dispatch] --> allows to run the workflow manually
+# you may use the following to build on each push
+# on:
+# push:
+# branches: [ master ]
+on: [workflow_dispatch]
 
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
+  # In this workflow we use a single job called "build"
   build:
-    runs-on: macos-14 
+    # The type of runner ie, the OS that the job will run on. apart from mac windows and ubuntu are also available
+    runs-on: macos-latest
 
+    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    - name: 📥 獲取代碼
-      uses: actions/checkout@v4
+      # Checks-out your repository under $GITHUB_WORKSPACE, so our job can access it
+     - uses: actions/checkout@v2
+       with: 
+          ref: ios
 
-    - name: ⚙️ 建立全域無簽名設定 (xcconfig)
-      run: |
-        # 建立設定檔，強制要求 Xcode 在所有層級放棄尋找開發者憑證與 Entitlements
-        echo "CODE_SIGNING_ALLOWED = NO" > disable_signing.xcconfig
-        echo "CODE_SIGNING_REQUIRED = NO" >> disable_signing.xcconfig
-        echo "CODE_SIGN_IDENTITY = \"\"" >> disable_signing.xcconfig
-        echo "ENTITLEMENTS_REQUIRED = NO" >> disable_signing.xcconfig
+     - name: Create Folder for certificates and profiles
+       run: |
+         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+         mkdir -p ~/Library/MobileDevice/Certificates/
+       
+       # decode and save the p12 and provisioning files stored as secrets
+     - name: Get Certificate
+       id: certFileDecode
+       uses: timheuer/base64-to-file@v1.0.3
+       with:
+        fileName: 'certificate.p12'
+        encodedString: ${{ secrets.P12_BASE64 }}
+     - name: Copy Certificate
+       run: mv ${{ steps.certFileDecode.outputs.filePath }} ~/Library/MobileDevice/Certificates/certificate.p12
+       
+     - name: Get Profile
+       id: profFileDecode
+       uses: timheuer/base64-to-file@v1.0.3
+       with:
+        fileName: 'decoded.mobileprovision'
+        encodedString: ${{ secrets.MOBILEPROVISION_BASE64 }}
+     - name: Copy Profiles
+       run: mv ${{ steps.profFileDecode.outputs.filePath }} ~/Library/MobileDevice/Provisioning\ Profiles/decoded.mobileprovision
 
-    - name: 🏗️ 執行純淨編譯 (套用全域設定)
-      run: |
-        xcodebuild clean build \
-          -project IMUNavigator.xcodeproj \
-          -scheme IMUNavigator \
-          -destination 'generic/platform=iOS' \
-          -configuration Release \
-          -xcconfig disable_signing.xcconfig \
-          -derivedDataPath ./build_output
+#install the necessary dependencies
+     - name: Install python and codemagic tools
+       uses: actions/setup-python@v2
+       with:
+         python-version: 3.7
+     - name: Install python dependencies
+       run:  python -m pip install codemagic-cli-tools
+     - name: Initialize Keychain with certificate
+       run: |
+         keychain initialize
+         keychain add-certificates --certificate ~/Library/MobileDevice/Certificates/certificate.p12 --certificate-password ${{ secrets.cert_password }}
+    
+#install flutter
+     - name: Flutter get
+       uses: subosito/flutter-action@v1.4.0
+       with:
+         flutter-version: '1.12.13+hotfix.9'
+     - run: flutter pub get
 
-    - name: 📦 手動提取並封裝 IPA
-      run: |
-        mkdir -p build/Payload
-        # 從 DerivedData 目錄中精準提取編譯好的 .app
-        cp -r ./build_output/Build/Products/Release-iphoneos/IMUNavigator.app build/Payload/
-        cd build
-        zip -qr IMUNavigator.ipa Payload
-      
-    - name: 🚀 上傳 IPA 產物
-      uses: actions/upload-artifact@v4
-      with:
-        name: IMUNavigator-Release-IPA
-        path: build/IMUNavigator.ipa
+#build and sign the ipa
+     - name: Building IPA
+       run: |
+         xcode-project use-profiles
+         flutter build ios --release --no-codesign
+         xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner --config Release
+#collect the files            
+     - name: collect ipa artifacts
+       uses: actions/upload-artifact@v2
+       with:
+        name: adhoc-ipa
+        # Path to the release files
+        path: build/ios/ipa/*.ipa
