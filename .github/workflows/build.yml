@@ -13,16 +13,15 @@ jobs:
     - name: 📥 下载代码仓库
       uses: actions/checkout@v4
 
-    - name: 🛠️ 设置 Xcode 版本
-      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
-
     - name: 🏗️ 编译 Xcode 项目
+      # 增加 -allowProvisioningUpdates 允许自动处理临时的签名状态
       run: |
-        xcodebuild -project IMUNavigator/IMUNavigator.xcodeproj \
+        xcodebuild archive \
+          -project IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
           -destination 'generic/platform=iOS' \
-          clean archive \
           -archivePath build/IMUNavigator.xcarchive \
+          -allowProvisioningUpdates \
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
