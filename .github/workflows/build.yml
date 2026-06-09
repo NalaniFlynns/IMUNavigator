@@ -1,0 +1,41 @@
+name: Build iOS IPA (Unsigned)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: macos-14 
+
+    steps:
+    - name:  下载代码仓库
+      uses: actions/checkout@v4
+
+    - name:  设置 Xcode 版本
+      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer 
+
+    - name:  编译 Xcode 项目 (跳过签名)
+      run: |
+        xcodebuild archive \
+          -project IMUNavigator.xcodeproj \
+          -scheme IMUNavigator \
+          -configuration Release \
+          -archivePath $PWD/build/IMUNavigator.xcarchive \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+    - name:  打包为 IPA 安装包
+      run: |
+        mkdir -p build/Payload
+        cp -r build/IMUNavigator.xcarchive/Products/Applications/IMUNavigator.app build/Payload/
+        cd build
+        zip -qr IMUNavigator.ipa Payload
+      
+    - name:  上传 IPA 供下载
+      uses: actions/upload-artifact@v4
+      with:
+        name: IMUNavigator-Release-IPA
+        path: build/IMUNavigator.ipa
