@@ -1,81 +1,47 @@
-# Set the name of your workflow
-name: IOSBuilder
+# 自动化工作流的名称
+name: iOS Unsigned Build
 
-# Controls when the action will run.
-# [workflow_dispatch] --> allows to run the workflow manually
-# you may use the following to build on each push
-# on:
-# push:
-# branches: [ master ]
-on: [workflow_dispatch]
+# 触发条件：当 main 分支收到代码推送时执行
+on:
+  push:
+    branches: [ main ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # In this workflow we use a single job called "build"
   build:
-    # The type of runner ie, the OS that the job will run on. apart from mac windows and ubuntu are also available
-    runs-on: macos-latest
+    # 指定运行环境为苹果官方的 macOS 系统
+    runs-on: macos-14
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so our job can access it
-     - uses: actions/checkout@v2
-       with: 
-          ref: ios
+      # 步骤 1：下载仓库代码到服务器
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-     - name: Create Folder for certificates and profiles
-       run: |
-         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-         mkdir -p ~/Library/MobileDevice/Certificates/
-       
-       # decode and save the p12 and provisioning files stored as secrets
-     - name: Get Certificate
-       id: certFileDecode
-       uses: timheuer/base64-to-file@v1.0.3
-       with:
-        fileName: 'certificate.p12'
-        encodedString: ${{ secrets.P12_BASE64 }}
-     - name: Copy Certificate
-       run: mv ${{ steps.certFileDecode.outputs.filePath }} ~/Library/MobileDevice/Certificates/certificate.p12
-       
-     - name: Get Profile
-       id: profFileDecode
-       uses: timheuer/base64-to-file@v1.0.3
-       with:
-        fileName: 'decoded.mobileprovision'
-        encodedString: ${{ secrets.MOBILEPROVISION_BASE64 }}
-     - name: Copy Profiles
-       run: mv ${{ steps.profFileDecode.outputs.filePath }} ~/Library/MobileDevice/Provisioning\ Profiles/decoded.mobileprovision
+      # 步骤 2：设置 Xcode 的版本
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
-#install the necessary dependencies
-     - name: Install python and codemagic tools
-       uses: actions/setup-python@v2
-       with:
-         python-version: 3.7
-     - name: Install python dependencies
-       run:  python -m pip install codemagic-cli-tools
-     - name: Initialize Keychain with certificate
-       run: |
-         keychain initialize
-         keychain add-certificates --certificate ~/Library/MobileDevice/Certificates/certificate.p12 --certificate-password ${{ secrets.cert_password }}
-    
-#install flutter
-     - name: Flutter get
-       uses: subosito/flutter-action@v1.4.0
-       with:
-         flutter-version: '1.12.13+hotfix.9'
-     - run: flutter pub get
+      # 步骤 3：直接编译生成未签名的 .app 文件
+      - name: Compile Unsigned App
+        run: |
+          xcodebuild clean build \
+            -project MyWorkspace.xcodeproj \
+            -scheme MyScheme \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
 
-#build and sign the ipa
-     - name: Building IPA
-       run: |
-         xcode-project use-profiles
-         flutter build ios --release --no-codesign
-         xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner --config Release
-#collect the files            
-     - name: collect ipa artifacts
-       uses: actions/upload-artifact@v2
-       with:
-        name: adhoc-ipa
-        # Path to the release files
-        path: build/ios/ipa/*.ipa
+      # 步骤 4：将编译产物打包成未签名的 .ipa 压缩包
+      - name: Package to Unsigned IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/Release-iphoneos/MyScheme.app build/Payload/
+          cd build && zip -r unsigned_output.ipa Payload/
+
+      # 步骤 5：将打包好的无签名 IPA 上传到 GitHub 提供下载
+      - name: Upload Unsigned IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-unsigned-app
+          path: build/unsigned_output.ipa
