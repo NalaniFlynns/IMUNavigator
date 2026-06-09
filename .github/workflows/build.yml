@@ -3,6 +3,7 @@ name: Build and Auto-Release Unsigned IPA
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -23,10 +24,8 @@ jobs:
         id: get_version
         run: |
           VERSION=$(xcodebuild -showBuildSettings -project IMUNavigator.xcodeproj -configuration Release | grep MARKETING_VERSION | head -n 1 | awk -F '= ' '{print $2}')
-
           if [ -z "$VERSION" ]; then VERSION="1.0.0"; fi
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "版本号提取成功: v$VERSION"
 
       - name: Build Unsigned App
         run: |
@@ -53,11 +52,11 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}-b${{ github.run_number }}
           name: IMUNavigator v${{ env.APP_VERSION }} (Unsigned)
           body: |
-            ##  IMUNavigator 自动编译发布
-            - **应用版本**：v${{ env.APP_VERSION }}
-            - **构建编号**：Build #${{ github.run_number }}
-            - **编译环境**：Xcode 16.x / iOS SDK
-            - **安装提示**：此文件为**无签名 IPA**，请使用 TrollStore (巨魔商店) 或自签工具进行安装。
+            IMUNavigator Release
+            Version: v${{ env.APP_VERSION }}
+            Build: #${{ github.run_number }}
+            Environment: Xcode 16.x / iOS SDK
+            Notice: Unsigned IPA for TrollStore or sideloading tools.
           draft: false
           prerelease: false
           files: build/IMUNavigator_Unsigned.ipa
