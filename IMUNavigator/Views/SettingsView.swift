@@ -59,10 +59,15 @@ struct SettingsFormContent: View, Equatable {
         NavigationView {
             Form {
                 Section(header: Text("Core Routing Engine")) {
-                    Picker("Cascade Mode", selection: $localNavMode) {
-                        ForEach(CoreNavMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) }
+                    VStack(alignment: .leading, spacing: 5) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
+                                set: { localNavMode = Array(CoreNavMode.allCases)[$0] }
+                            ),
+                            items: CoreNavMode.allCases.map { $0.rawValue }
+                        )
                     }
-                    .pickerStyle(SegmentedPickerStyle())
                     .onChange(of: localNavMode) { m in
                         AppSettings.shared.coreNavMode = m
                         engine.switchNavMode(to: m)
@@ -88,12 +93,12 @@ struct SettingsFormContent: View, Equatable {
                 Section(header: Text("Drift Compensation & Damping")) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("X-Axis Damping: \(String(format: "%.2f", dampingX))").font(.caption).foregroundColor(.gray)
-                        Slider(value: $dampingX, in: 0.0...1.0)
+                        UIKitSlider(value: $dampingX, range: 0.0...1.0)
                             .onChange(of: dampingX) { AppSettings.shared.dampingX = $0 }
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Y-Axis Damping: \(String(format: "%.2f", dampingY))").font(.caption).foregroundColor(.gray)
-                        Slider(value: $dampingY, in: 0.0...1.0)
+                        UIKitSlider(value: $dampingY, range: 0.0...1.0)
                             .onChange(of: dampingY) { AppSettings.shared.dampingY = $0 }
                     }
                     
@@ -110,9 +115,14 @@ struct SettingsFormContent: View, Equatable {
                 }
                 
                 Section(header: Text("Recording Mode")) {
-                    Picker("Mode", selection: $recordingMode) { Text("By Time").tag(RecordingMode.time); Text("By Distance").tag(RecordingMode.distance) }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .onChange(of: recordingMode) { AppSettings.shared.recordingMode = $0 }
+                    UIKitSegmentedPicker(
+                        selection: Binding(
+                            get: { recordingMode == .time ? 0 : 1 },
+                            set: { recordingMode = $0 == 0 ? .time : .distance }
+                        ),
+                        items: ["By Time", "By Distance"]
+                    )
+                    .onChange(of: recordingMode) { AppSettings.shared.recordingMode = $0 }
                     
                     if recordingMode == .time {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { AppSettings.shared.recordIntervalTime = d } } }
@@ -127,25 +137,42 @@ struct SettingsFormContent: View, Equatable {
                     Toggle("Show Error Chart", isOn: $showErrorChart)
                         .onChange(of: showErrorChart) { AppSettings.shared.showErrorChart = $0 }
                     if showErrorChart {
-                        Picker("Error Mode", selection: $errorChartMode) { ForEach(ErrorChartMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .onChange(of: errorChartMode) { AppSettings.shared.errorChartMode = $0 }
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
+                                set: { errorChartMode = Array(ErrorChartMode.allCases)[$0] }
+                            ),
+                            items: ErrorChartMode.allCases.map { $0.rawValue }
+                        )
+                        .onChange(of: errorChartMode) { AppSettings.shared.errorChartMode = $0 }
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
                         .onChange(of: showResidualChart) { AppSettings.shared.showResidualChart = $0 }
                 }
                 
                 Section(header: Text("Storage & Background")) {
-                    Picker("Database Format", selection: $storageFormat) { Text("JSON File").tag(StorageFormat.json); Text("SQLite Database").tag(StorageFormat.sqlite) }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .onChange(of: storageFormat) { AppSettings.shared.storageFormat = $0 }
+                    UIKitSegmentedPicker(
+                        selection: Binding(
+                            get: { storageFormat == .json ? 0 : 1 },
+                            set: { storageFormat = $0 == 0 ? .json : .sqlite }
+                        ),
+                        items: ["JSON File", "SQLite Database"]
+                    )
+                    .onChange(of: storageFormat) { AppSettings.shared.storageFormat = $0 }
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
-                    Picker("SLAM Filter", selection: $slamFilterMode) { ForEach(SLAMFilterMode.allCases, id: \.self) { m in Text(m.rawValue).tag(m) } }
-                        .onChange(of: slamFilterMode) { AppSettings.shared.slamFilterMode = $0 }
+                    UIKitSegmentedPicker(
+                        selection: Binding(
+                            get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
+                            set: { slamFilterMode = Array(SLAMFilterMode.allCases)[$0] }
+                        ),
+                        items: SLAMFilterMode.allCases.map { $0.rawValue }
+                    )
+                    .onChange(of: slamFilterMode) { AppSettings.shared.slamFilterMode = $0 }
+                    
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
                         .onChange(of: enableZUPT) { AppSettings.shared.enableZUPT = $0 }
                     
@@ -215,6 +242,38 @@ struct UIKitSegmentedPicker: UIViewRepresentable {
         init(_ parent: UIKitSegmentedPicker) { self.parent = parent }
         @objc func valueChanged(_ sender: UISegmentedControl) {
             parent.selection = sender.selectedSegmentIndex
+        }
+    }
+}
+
+struct UIKitSlider: UIViewRepresentable {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0.0...1.0
+    
+    func makeUIView(context: Context) -> UISlider {
+        let slider = UISlider()
+        slider.minimumValue = Float(range.lowerBound)
+        slider.maximumValue = Float(range.upperBound)
+        slider.value = Float(value)
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
+        return slider
+    }
+    
+    func updateUIView(_ uiView: UISlider, context: Context) {
+        if !uiView.isTracking && abs(Double(uiView.value) - value) > 0.001 {
+            uiView.value = Float(value)
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject {
+        var parent: UIKitSlider
+        init(_ parent: UIKitSlider) { self.parent = parent }
+        @objc func valueChanged(_ sender: UISlider) {
+            parent.value = Double(sender.value)
         }
     }
 }
