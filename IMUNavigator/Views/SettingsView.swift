@@ -70,7 +70,7 @@ struct SettingsFormContent: View, Equatable {
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
                     Button("Spatial Alignment Lab") { showAlignment = true }.foregroundColor(.orange)
                     
-                    NavigationLink(destination: DebugPanelView(engine: engine)) {
+                    NavigationLink(destination: DebugPanelView()) {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
                     
@@ -189,63 +189,105 @@ struct SettingsFormContent: View, Equatable {
 }
 
 struct DebugPanelView: View {
-    let engine: SensorFusionEngine
-    let logger = AppLogger.shared
-    
     @State private var tab = 0
-    @State private var refreshTrigger = false
-    
-    let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        VStack {
-            Picker("", selection: $tab) {
-                Text("Sensors").tag(0)
-                Text("ML Info").tag(1)
-                Text("App Logs").tag(2)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                CustomTabButton(title: "Sensors", isSelected: tab == 0) { tab = 0 }
+                CustomTabButton(title: "ML Info", isSelected: tab == 1) { tab = 1 }
+                CustomTabButton(title: "App Logs", isSelected: tab == 2) { tab = 2 }
             }
-            .pickerStyle(SegmentedPickerStyle())
+            .padding(3)
+            .background(Color(.systemGray6))
+            .cornerRadius(8)
             .padding()
             
-            ScrollView {
-                if tab == 0 {
-                    VStack(alignment: .leading, spacing: 15) {
-                        DebugRow(title: "ARKit VIO State", value: engine.debugState.arkitState)
-                        DebugRow(title: "AR Pos XYZ", value: String(format: "(%.2f, %.2f, %.2f)", engine.debugState.arkitPos.x, engine.debugState.arkitPos.y, engine.debugState.arkitPos.z))
-                        Divider()
-                        DebugRow(title: "Raw Earth Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawAcc.x, engine.debugState.rawAcc.y, engine.debugState.rawAcc.z))
-                        DebugRow(title: "Corrected Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.correctedAcc.x, engine.debugState.correctedAcc.y, engine.debugState.correctedAcc.z))
-                        DebugRow(title: "Raw Gyro", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawGyro.x, engine.debugState.rawGyro.y, engine.debugState.rawGyro.z))
-                        Divider()
-                        DebugRow(title: "IMU Data FPS", value: String(format: "%.1f Hz", engine.debugState.imuFPS)).foregroundColor(.blue)
-                        DebugRow(title: "Mag Compass", value: String(format: "%.1f°", engine.debugState.compassHeading))
-                        DebugRow(title: "Barometer Alt", value: String(format: "%.2fm", engine.debugState.baroAlt))
-                    }.padding()
-                } else if tab == 1 {
-                    VStack(alignment: .leading, spacing: 15) {
-                        DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
-                        DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
-                        DebugRow(title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
-                        Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .padding(.top)
-                    }.padding()
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(logger.logs, id: \.self) { log in
-                            Text(log).font(.system(size: 10, design: .monospaced)).foregroundColor(.green)
-                            Divider()
-                        }
-                    }.padding()
-                }
+            if tab == 0 {
+                SensorsTabView()
+            } else if tab == 1 {
+                MLInfoTabView()
+            } else {
+                AppLogsTabView()
             }
-            .background(Text(refreshTrigger ? "" : "").hidden())
         }
         .navigationTitle("Debug Console")
         .navigationBarTitleDisplayMode(.inline)
-        .onReceive(timer) { _ in
-            refreshTrigger.toggle()
+    }
+}
+
+struct CustomTabButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                .foregroundColor(isSelected ? .primary : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? Color(.systemBackground) : Color.clear)
+                        .shadow(color: isSelected ? Color.black.opacity(0.1) : Color.clear, radius: 1, x: 0, y: 1)
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct SensorsTabView: View {
+    @EnvironmentObject var engine: SensorFusionEngine
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 15) {
+                DebugRow(title: "ARKit VIO State", value: engine.debugState.arkitState)
+                DebugRow(title: "AR Pos XYZ", value: String(format: "(%.2f, %.2f, %.2f)", engine.debugState.arkitPos.x, engine.debugState.arkitPos.y, engine.debugState.arkitPos.z))
+                Divider()
+                DebugRow(title: "Raw Earth Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawAcc.x, engine.debugState.rawAcc.y, engine.debugState.rawAcc.z))
+                DebugRow(title: "Corrected Acc", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.correctedAcc.x, engine.debugState.correctedAcc.y, engine.debugState.correctedAcc.z))
+                DebugRow(title: "Raw Gyro", value: String(format: "(%.3f, %.3f, %.3f)", engine.debugState.rawGyro.x, engine.debugState.rawGyro.y, engine.debugState.rawGyro.z))
+                Divider()
+                DebugRow(title: "IMU Data FPS", value: String(format: "%.1f Hz", engine.debugState.imuFPS)).foregroundColor(.blue)
+                DebugRow(title: "Mag Compass", value: String(format: "%.1f°", engine.debugState.compassHeading))
+                DebugRow(title: "Barometer Alt", value: String(format: "%.2fm", engine.debugState.baroAlt))
+            }.padding()
+        }
+    }
+}
+
+struct MLInfoTabView: View {
+    @EnvironmentObject var engine: SensorFusionEngine
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 15) {
+                DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
+                DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
+                DebugRow(title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
+                Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.top)
+            }.padding()
+        }
+    }
+}
+
+struct AppLogsTabView: View {
+    @ObservedObject var logger = AppLogger.shared
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(logger.logs, id: \.self) { log in
+                    Text(log).font(.system(size: 10, design: .monospaced)).foregroundColor(.green)
+                    Divider()
+                }
+            }.padding()
         }
     }
 }
