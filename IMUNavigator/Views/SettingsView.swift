@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension View {
     func endTextEditing() {
@@ -188,12 +189,43 @@ struct SettingsFormContent: View, Equatable {
     }
 }
 
+struct UIKitSegmentedPicker: UIViewRepresentable {
+    @Binding var selection: Int
+    let items: [String]
+    
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items: items)
+        control.selectedSegmentIndex = selection
+        control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
+        return control
+    }
+    
+    func updateUIView(_ uiView: UISegmentedControl, context: Context) {
+        if uiView.selectedSegmentIndex != selection {
+            uiView.selectedSegmentIndex = selection
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject {
+        var parent: UIKitSegmentedPicker
+        init(_ parent: UIKitSegmentedPicker) { self.parent = parent }
+        @objc func valueChanged(_ sender: UISegmentedControl) {
+            parent.selection = sender.selectedSegmentIndex
+        }
+    }
+}
+
 struct DebugPanelView: View {
     @State private var tab = 0
     
     var body: some View {
         VStack(spacing: 0) {
-            NativeSegmentedPicker(tab: $tab)
+            UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
+                .padding()
             
             ScrollView {
                 if tab == 0 {
@@ -207,24 +239,6 @@ struct DebugPanelView: View {
         }
         .navigationTitle("Debug Console")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-struct NativeSegmentedPicker: View, Equatable {
-    @Binding var tab: Int
-    
-    static func == (lhs: NativeSegmentedPicker, rhs: NativeSegmentedPicker) -> Bool {
-        lhs.tab == rhs.tab
-    }
-    
-    var body: some View {
-        Picker("", selection: $tab) {
-            Text("Sensors").tag(0)
-            Text("ML Info").tag(1)
-            Text("App Logs").tag(2)
-        }
-        .pickerStyle(SegmentedPickerStyle())
-        .padding()
     }
 }
 
@@ -282,9 +296,7 @@ struct DebugRow: View {
         HStack {
             Text(title).foregroundColor(.gray)
             Spacer()
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 220, alignment: .trailing)
+            Text(value).font(.system(.body, design: .monospaced))
         }
     }
 }
