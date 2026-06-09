@@ -1,0 +1,59 @@
+name: Bump App Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Marketing Version'
+        required: true
+        type: string
+      build:
+        description: 'Build Number'
+        required: true
+        type: string
+
+jobs:
+  update-version:
+    runs-on: macos-latest
+    
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - run: sudo xcode-select -s /Applications/Xcode_15.2.app
+
+      - run: |
+          CURRENT_VERSION=$(xcrun agvtool what-marketing-version -terse1)
+          CURRENT_BUILD=$(xcrun agvtool what-version -terse)
+          
+          echo "========================================"
+          echo "Current Marketing Version: $CURRENT_VERSION"
+          echo "Current Build Number: $CURRENT_BUILD"
+          echo "========================================"
+          
+          xcrun agvtool new-marketing-version ${{ inputs.version }}
+          xcrun agvtool new-version -all ${{ inputs.build }}
+          
+          NEW_VERSION=$(xcrun agvtool what-marketing-version -terse1)
+          NEW_BUILD=$(xcrun agvtool what-version -terse)
+          
+          echo "========================================"
+          echo "New Marketing Version: $NEW_VERSION"
+          echo "New Build Number: $NEW_BUILD"
+          echo "========================================"
+
+      - run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if [[ -z $(git status -s) ]]; then
+            exit 0
+          fi
+          
+          git add .
+          git commit -m "chore: bump version to ${{ inputs.version }} (build ${{ inputs.build }})"
+          git push
