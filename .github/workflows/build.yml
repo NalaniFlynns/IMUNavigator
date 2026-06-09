@@ -13,14 +13,10 @@ jobs:
     - name: 📥 下载代码仓库
       uses: actions/checkout@v4
 
-    - name: 🔍 列出项目所有可用的 Scheme
-      # 如果这里报错，说明是 .xcodeproj 文件路径名不对
-      run: xcodebuild -list -project IMUNavigator.xcodeproj
-
     - name: 🏗️ 编译 Xcode 项目
       run: |
         xcodebuild clean archive \
-          -project IMUNavigator.xcodeproj \
+          -project IMUNavigator/IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
           -destination 'generic/platform=iOS' \
           -archivePath build/IMUNavigator.xcarchive \
