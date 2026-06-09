@@ -10,31 +10,54 @@ jobs:
     runs-on: macos-14 
 
     steps:
-    - name:  下载代码仓库
+    - name: 📥 下载代码仓库
       uses: actions/checkout@v4
 
-    - name:  设置 Xcode 版本
-      run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer 
+    - name: 🪄 自动生成 Shared Scheme (免 Mac 修复)
+      # 强制云端 Mac 生成 Xcode 缺失的共享配置文件
+      run: |
+        mkdir -p IMUNavigator.xcodeproj/xcshareddata/xcschemes
+        cat <<EOF > IMUNavigator.xcodeproj/xcshareddata/xcschemes/IMUNavigator.xcscheme
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Scheme LastUpgradeVersion = "1520" version = "1.3">
+           <BuildAction parallelizeBuildables = "YES" buildImplicitDependencies = "YES">
+              <BuildActionEntries>
+                 <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
+                    <BuildableReference
+                       BuildableIdentifier = "primary"
+                       BlueprintIdentifier = "5706CBF02FCB3E540087FFA0"
+                       BuildableName = "IMUNavigator.app"
+                       BlueprintName = "IMUNavigator"
+                       ReferencedContainer = "container:IMUNavigator.xcodeproj">
+                    </BuildableReference>
+                 </BuildActionEntry>
+              </BuildActionEntries>
+           </BuildAction>
+           <ArchiveAction buildConfiguration = "Release" revealArchiveInOrganizer = "YES">
+           </ArchiveAction>
+        </Scheme>
+        EOF
 
-    - name:  编译 Xcode 项目 (跳过签名)
+    - name: 🏗️ 编译 Xcode 项目 (跳过签名)
       run: |
         xcodebuild archive \
           -project IMUNavigator.xcodeproj \
           -scheme IMUNavigator \
           -configuration Release \
+          -destination 'generic/platform=iOS' \
           -archivePath $PWD/build/IMUNavigator.xcarchive \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-    - name:  打包为 IPA 安装包
+    - name: 📦 打包为 IPA 安装包
       run: |
         mkdir -p build/Payload
         cp -r build/IMUNavigator.xcarchive/Products/Applications/IMUNavigator.app build/Payload/
         cd build
         zip -qr IMUNavigator.ipa Payload
       
-    - name:  上传 IPA 供下载
+    - name: 🚀 上传 IPA 供下载
       uses: actions/upload-artifact@v4
       with:
         name: IMUNavigator-Release-IPA
