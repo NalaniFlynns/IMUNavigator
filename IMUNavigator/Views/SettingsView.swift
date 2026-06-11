@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Charts
 
 extension View {
     func endTextEditing() {
@@ -60,19 +61,21 @@ struct SettingsFormContent: View, Equatable {
             Form {
                 Section(header: Text("Core Routing Engine")) {
                     VStack(alignment: .leading, spacing: 5) {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
-                                set: { newIndex in
-                                    // 直接在 Binding 内部强制应用设置并调用底层，不受 UI 冻结影响
-                                    let selectedMode = Array(CoreNavMode.allCases)[newIndex]
-                                    localNavMode = selectedMode
-                                    AppSettings.shared.coreNavMode = selectedMode
-                                    engine.switchNavMode(to: selectedMode)
-                                }
-                            ),
-                            items: CoreNavMode.allCases.map { $0.rawValue }
-                        )
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            UIKitSegmentedPicker(
+                                selection: Binding(
+                                    get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
+                                    set: { newIndex in
+                                        let selectedMode = Array(CoreNavMode.allCases)[newIndex]
+                                        localNavMode = selectedMode
+                                        AppSettings.shared.coreNavMode = selectedMode
+                                        engine.switchNavMode(to: selectedMode)
+                                    }
+                                ),
+                                items: CoreNavMode.allCases.map { $0.rawValue }
+                            )
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
                     
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
@@ -117,17 +120,20 @@ struct SettingsFormContent: View, Equatable {
                 }
                 
                 Section(header: Text("Recording Mode")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { recordingMode == .time ? 0 : 1 },
-                            set: { newIndex in 
-                                let mode: RecordingMode = newIndex == 0 ? .time : .distance
-                                recordingMode = mode
-                                AppSettings.shared.recordingMode = mode
-                            }
-                        ),
-                        items: ["By Time", "By Distance"]
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { recordingMode == .time ? 0 : 1 },
+                                set: { newIndex in 
+                                    let mode: RecordingMode = newIndex == 0 ? .time : .distance
+                                    recordingMode = mode
+                                    AppSettings.shared.recordingMode = mode
+                                }
+                            ),
+                            items: ["By Time", "By Distance"]
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     
                     if recordingMode == .time {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { AppSettings.shared.recordIntervalTime = d } } }
@@ -142,50 +148,59 @@ struct SettingsFormContent: View, Equatable {
                     Toggle("Show Error Chart", isOn: $showErrorChart)
                         .onChange(of: showErrorChart) { AppSettings.shared.showErrorChart = $0 }
                     if showErrorChart {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
-                                set: { newIndex in 
-                                    let mode = Array(ErrorChartMode.allCases)[newIndex]
-                                    errorChartMode = mode
-                                    AppSettings.shared.errorChartMode = mode
-                                }
-                            ),
-                            items: ErrorChartMode.allCases.map { $0.rawValue }
-                        )
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            UIKitSegmentedPicker(
+                                selection: Binding(
+                                    get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
+                                    set: { newIndex in 
+                                        let mode = Array(ErrorChartMode.allCases)[newIndex]
+                                        errorChartMode = mode
+                                        AppSettings.shared.errorChartMode = mode
+                                    }
+                                ),
+                                items: ErrorChartMode.allCases.map { $0.rawValue }
+                            )
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
                         .onChange(of: showResidualChart) { AppSettings.shared.showResidualChart = $0 }
                 }
                 
                 Section(header: Text("Storage & Background")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { storageFormat == .json ? 0 : 1 },
-                            set: { newIndex in 
-                                let fmt: StorageFormat = newIndex == 0 ? .json : .sqlite
-                                storageFormat = fmt
-                                AppSettings.shared.storageFormat = fmt
-                            }
-                        ),
-                        items: ["JSON File", "SQLite Database"]
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { storageFormat == .json ? 0 : 1 },
+                                set: { newIndex in 
+                                    let fmt: StorageFormat = newIndex == 0 ? .json : .sqlite
+                                    storageFormat = fmt
+                                    AppSettings.shared.storageFormat = fmt
+                                }
+                            ),
+                            items: ["JSON File", "SQLite Database"]
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
-                            set: { newIndex in 
-                                let mode = Array(SLAMFilterMode.allCases)[newIndex]
-                                slamFilterMode = mode
-                                AppSettings.shared.slamFilterMode = mode
-                            }
-                        ),
-                        items: SLAMFilterMode.allCases.map { $0.rawValue }
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
+                                set: { newIndex in 
+                                    let mode = Array(SLAMFilterMode.allCases)[newIndex]
+                                    slamFilterMode = mode
+                                    AppSettings.shared.slamFilterMode = mode
+                                }
+                            ),
+                            items: SLAMFilterMode.allCases.map { $0.rawValue }
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
                         .onChange(of: enableZUPT) { AppSettings.shared.enableZUPT = $0 }
@@ -216,7 +231,7 @@ struct SettingsFormContent: View, Equatable {
                 }
             }
             .onAppear {
-                localNavMode = AppSettings.shared.coreNavMode // 每次切回页面拉取底层实际最新状态
+                localNavMode = AppSettings.shared.coreNavMode
                 
                 timeStr = String(AppSettings.shared.recordIntervalTime)
                 spaceStr = String(AppSettings.shared.recordIntervalSpace)
@@ -241,10 +256,10 @@ struct UIKitSegmentedPicker: UIViewRepresentable {
         control.selectedSegmentIndex = selection
         control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
         
-        // 降低横向抗压缩优先级，允许被屏幕宽度强行挤压
-        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // 1. 根据内容自动分配宽度（允许撑满文字本来长度）
+        control.apportionsSegmentWidthsByContent = true
         
-        // 设置文字太长时的省略策略：截断尾部并添加“...”
+        // 2. 文本省略截断逻辑（应对极端超长文本边界情况）
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
         paragraphStyle.alignment = .center
@@ -312,8 +327,11 @@ struct DebugPanelView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
-                .padding()
+            ScrollView(.horizontal, showsIndicators: false) {
+                UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding()
             
             ScrollView {
                 if tab == 0 {
@@ -351,17 +369,59 @@ struct SensorsTabView: View {
 
 struct MLInfoTabView: View {
     @EnvironmentObject var engine: SensorFusionEngine
+    @State private var tick = 0
+    // 高频定时器强制拉取最新底层数据，解决因父视图Equatable导致的冻结不实时刷新问题
+    let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            DebugRow(title: "RoNIN Status", value: engine.debugState.mlStatus)
-            DebugRow(title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
-            DebugRow(title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
+            // 新增了配套的 SF Symbols 图标
+            DebugRow(icon: "cpu", title: "RoNIN Status", value: engine.debugState.mlStatus)
+            DebugRow(icon: "move.3d", title: "Predicted Vel (XY)", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
+            DebugRow(icon: "bolt.badge.clock.fill", title: "RoNIN ML FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
+            
+            Divider()
+            Label("Model Residuals (In vs Out)", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
+            
+            // 实时残差对比
+            let posRes = engine.chartPoints.last?.residual ?? 0.0
+            let accRes = engine.chartPoints.last?.accResidual ?? 0.0
+            
+            DebugRow(icon: "arrow.up.and.down.circle", title: "Pos Residual (NR-AR)", value: String(format: "%.3f m", posRes))
+            DebugRow(icon: "bolt.horizontal.circle", title: "Acc Dev (IMU-AR)", value: String(format: "%.3f m/s²", accRes))
+            
+            // 实时残差折线图绘制
+            if !engine.chartPoints.isEmpty {
+                Chart {
+                    let firstTime = engine.chartPoints.first?.timestamp ?? 0
+                    ForEach(engine.chartPoints) { point in
+                        AreaMark(
+                            x: .value("Time", point.timestamp - firstTime),
+                            y: .value("Res", point.residual)
+                        ).foregroundStyle(.orange.opacity(0.4))
+                        
+                        LineMark(
+                            x: .value("Time", point.timestamp - firstTime),
+                            y: .value("AccRes", point.accResidual ?? 0)
+                        ).foregroundStyle(.purple)
+                    }
+                }
+                .chartXAxis(.hidden)
+                .frame(height: 70)
+            }
+            
             Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
                 .font(.caption)
                 .foregroundColor(.gray)
                 .padding(.top)
-        }.padding()
+        }
+        .padding()
+        // 接收定时器，强制刷新状态
+        .onReceive(timer) { _ in
+            tick += 1
+        }
+        // 挂载 tick 以迫使系统重新评估 body
+        .background(Color.clear.opacity(Double(tick) * 0))
     }
 }
 
@@ -378,10 +438,16 @@ struct AppLogsTabView: View {
     }
 }
 
+// 扩展 DebugRow 组件以支持可选图标传入
 struct DebugRow: View {
-    var title: String; var value: String
+    var icon: String? = nil
+    var title: String
+    var value: String
     var body: some View {
         HStack {
+            if let icon = icon {
+                Image(systemName: icon).foregroundColor(.gray).frame(width: 20, alignment: .leading)
+            }
             Text(title).foregroundColor(.gray)
             Spacer()
             Text(value).font(.system(.body, design: .monospaced))
