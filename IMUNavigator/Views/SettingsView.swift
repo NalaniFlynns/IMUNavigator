@@ -28,19 +28,20 @@ struct SettingsFormContent: View, Equatable {
     @State private var showAlignment = false
     @FocusState private var isInputActive: Bool
     
-    @State private var localNavMode: CoreNavMode = AppSettings.shared.coreNavMode
+    @State private var navModeIndex: Int = Array(CoreNavMode.allCases).firstIndex(of: AppSettings.shared.coreNavMode) ?? 0
+    @State private var recordingModeIndex: Int = AppSettings.shared.recordingMode == .time ? 0 : 1
+    @State private var errorChartModeIndex: Int = Array(ErrorChartMode.allCases).firstIndex(of: AppSettings.shared.errorChartMode) ?? 0
+    @State private var storageFormatIndex: Int = AppSettings.shared.storageFormat == .json ? 0 : 1
+    @State private var slamFilterModeIndex: Int = Array(SLAMFilterMode.allCases).firstIndex(of: AppSettings.shared.slamFilterMode) ?? 0
+    
     @State private var dampingX: Double = AppSettings.shared.dampingX
     @State private var dampingY: Double = AppSettings.shared.dampingY
     @State private var enableSLAM: Bool = AppSettings.shared.enableSLAMCorrection
     @State private var enableDynamicCalib: Bool = AppSettings.shared.enableDynamicCalibration
-    @State private var recordingMode: RecordingMode = AppSettings.shared.recordingMode
     @State private var showAltitudeChart: Bool = AppSettings.shared.showAltitudeChart
     @State private var showErrorChart: Bool = AppSettings.shared.showErrorChart
-    @State private var errorChartMode: ErrorChartMode = AppSettings.shared.errorChartMode
     @State private var showResidualChart: Bool = AppSettings.shared.showResidualChart
-    @State private var storageFormat: StorageFormat = AppSettings.shared.storageFormat
     @State private var enableBackgroundRecord: Bool = AppSettings.shared.enableBackgroundRecording
-    @State private var slamFilterMode: SLAMFilterMode = AppSettings.shared.slamFilterMode
     @State private var enableZUPT: Bool = AppSettings.shared.enableZUPT
     @State private var autoRotateCanvas: Bool = AppSettings.shared.autoRotateCanvas
     @State private var recordGNSS: Bool = AppSettings.shared.recordGNSS
@@ -65,19 +66,16 @@ struct SettingsFormContent: View, Equatable {
                 Section(header: Text("Core Routing Engine")) {
                     VStack(alignment: .leading, spacing: 5) {
                         UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
-                                set: { newIndex in
-                                    let selectedMode = Array(CoreNavMode.allCases)[newIndex]
-                                    localNavMode = selectedMode
-                                    AppSettings.shared.coreNavMode = selectedMode
-                                    engine.switchNavMode(to: selectedMode)
-                                }
-                            ),
+                            selection: $navModeIndex,
                             items: CoreNavMode.allCases.map { $0.rawValue }
                         )
                         .frame(height: 32)
                         .frame(maxWidth: .infinity)
+                        .onChange(of: navModeIndex) { _, newIndex in
+                            let selectedMode = Array(CoreNavMode.allCases)[newIndex]
+                            AppSettings.shared.coreNavMode = selectedMode
+                            engine.switchNavMode(to: selectedMode)
+                        }
                     }
                     
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
@@ -123,19 +121,16 @@ struct SettingsFormContent: View, Equatable {
                 
                 Section(header: Text("Recording Mode")) {
                     UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { recordingMode == .time ? 0 : 1 },
-                            set: { newIndex in 
-                                let mode: RecordingMode = newIndex == 0 ? .time : .distance
-                                recordingMode = mode
-                                AppSettings.shared.recordingMode = mode
-                            }
-                        ),
+                        selection: $recordingModeIndex,
                         items: ["By Time", "By Distance"]
                     )
                     .frame(height: 32).frame(maxWidth: .infinity)
+                    .onChange(of: recordingModeIndex) { _, newIndex in
+                        let mode: RecordingMode = newIndex == 0 ? .time : .distance
+                        AppSettings.shared.recordingMode = mode
+                    }
                     
-                    if recordingMode == .time {
+                    if recordingModeIndex == 0 {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalTime = d } } }
                     } else {
                         HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalSpace = d } } }
@@ -147,54 +142,48 @@ struct SettingsFormContent: View, Equatable {
                         .onChange(of: showAltitudeChart) { _, newValue in AppSettings.shared.showAltitudeChart = newValue }
                     Toggle("Show Error Chart", isOn: $showErrorChart)
                         .onChange(of: showErrorChart) { _, newValue in AppSettings.shared.showErrorChart = newValue }
+                    
                     if showErrorChart {
                         UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
-                                set: { newIndex in 
-                                    let mode = Array(ErrorChartMode.allCases)[newIndex]
-                                    errorChartMode = mode
-                                    AppSettings.shared.errorChartMode = mode
-                                }
-                            ),
+                            selection: $errorChartModeIndex,
                             items: ErrorChartMode.allCases.map { $0.rawValue }
                         )
                         .frame(height: 32).frame(maxWidth: .infinity)
+                        .onChange(of: errorChartModeIndex) { _, newIndex in
+                            let mode = Array(ErrorChartMode.allCases)[newIndex]
+                            AppSettings.shared.errorChartMode = mode
+                        }
                     }
+                    
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
                         .onChange(of: showResidualChart) { _, newValue in AppSettings.shared.showResidualChart = newValue }
                 }
                 
                 Section(header: Text("Storage & Background")) {
                     UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { storageFormat == .json ? 0 : 1 },
-                            set: { newIndex in 
-                                let fmt: StorageFormat = newIndex == 0 ? .json : .sqlite
-                                storageFormat = fmt
-                                AppSettings.shared.storageFormat = fmt
-                            }
-                        ),
+                        selection: $storageFormatIndex,
                         items: ["JSON File", "SQLite Database"]
                     )
                     .frame(height: 32).frame(maxWidth: .infinity)
+                    .onChange(of: storageFormatIndex) { _, newIndex in
+                        let fmt: StorageFormat = newIndex == 0 ? .json : .sqlite
+                        AppSettings.shared.storageFormat = fmt
+                    }
+                    
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { _, newValue in AppSettings.shared.enableBackgroundRecording = newValue }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
                     UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
-                            set: { newIndex in 
-                                let mode = Array(SLAMFilterMode.allCases)[newIndex]
-                                slamFilterMode = mode
-                                AppSettings.shared.slamFilterMode = mode
-                            }
-                        ),
+                        selection: $slamFilterModeIndex,
                         items: SLAMFilterMode.allCases.map { $0.rawValue }
                     )
                     .frame(height: 32).frame(maxWidth: .infinity)
+                    .onChange(of: slamFilterModeIndex) { _, newIndex in
+                        let mode = Array(SLAMFilterMode.allCases)[newIndex]
+                        AppSettings.shared.slamFilterMode = mode
+                    }
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
                         .onChange(of: enableZUPT) { _, newValue in AppSettings.shared.enableZUPT = newValue }
@@ -225,12 +214,19 @@ struct SettingsFormContent: View, Equatable {
                 }
             }
             .onReceive(syncTimer) { _ in
-                if localNavMode != AppSettings.shared.coreNavMode {
-                    localNavMode = AppSettings.shared.coreNavMode
+                let currentNavMode = AppSettings.shared.coreNavMode
+                let expectedIndex = Array(CoreNavMode.allCases).firstIndex(of: currentNavMode) ?? 0
+                if navModeIndex != expectedIndex {
+                    navModeIndex = expectedIndex
                 }
             }
             .onAppear {
-                localNavMode = AppSettings.shared.coreNavMode
+                navModeIndex = Array(CoreNavMode.allCases).firstIndex(of: AppSettings.shared.coreNavMode) ?? 0
+                recordingModeIndex = AppSettings.shared.recordingMode == .time ? 0 : 1
+                errorChartModeIndex = Array(ErrorChartMode.allCases).firstIndex(of: AppSettings.shared.errorChartMode) ?? 0
+                storageFormatIndex = AppSettings.shared.storageFormat == .json ? 0 : 1
+                slamFilterModeIndex = Array(SLAMFilterMode.allCases).firstIndex(of: AppSettings.shared.slamFilterMode) ?? 0
+                
                 timeStr = String(AppSettings.shared.recordIntervalTime)
                 spaceStr = String(AppSettings.shared.recordIntervalSpace)
                 biasXStr = String(AppSettings.shared.manualBiasX)
