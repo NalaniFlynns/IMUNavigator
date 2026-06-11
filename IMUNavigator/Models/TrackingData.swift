@@ -43,6 +43,9 @@ struct TrackingPoint: Codable, Identifiable {
     let isZUPTActive: Bool
     let slamConfidence: String
     
+    var resX: Double?
+    var resY: Double?
+    
     let latitude: Double?
     let longitude: Double?
     let gnssAccuracy: Double?
