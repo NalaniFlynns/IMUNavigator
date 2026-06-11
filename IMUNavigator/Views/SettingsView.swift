@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import Charts
+import Combine
 
 extension View {
     func endTextEditing() {
@@ -56,12 +57,14 @@ struct SettingsFormContent: View, Equatable {
     @State private var zuptAccStr: String = ""
     @State private var zuptGyroStr: String = ""
     
+    // 独立探针：解决 Equatable 冻结导致算法自动降级 (NR) 时，UI 无法及时恢复切换的问题
+    let syncTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+    
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("Core Routing Engine")) {
                     VStack(alignment: .leading, spacing: 5) {
-                        // 移除横向滚动，让其自然撑满屏幕宽度并均分
                         UIKitSegmentedPicker(
                             selection: Binding(
                                 get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
@@ -74,6 +77,8 @@ struct SettingsFormContent: View, Equatable {
                             ),
                             items: CoreNavMode.allCases.map { $0.rawValue }
                         )
+                        .frame(height: 32)
+                        .frame(maxWidth: .infinity)
                     }
                     
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
@@ -129,6 +134,7 @@ struct SettingsFormContent: View, Equatable {
                         ),
                         items: ["By Time", "By Distance"]
                     )
+                    .frame(height: 32).frame(maxWidth: .infinity)
                     
                     if recordingMode == .time {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { AppSettings.shared.recordIntervalTime = d } } }
@@ -154,6 +160,7 @@ struct SettingsFormContent: View, Equatable {
                             ),
                             items: ErrorChartMode.allCases.map { $0.rawValue }
                         )
+                        .frame(height: 32).frame(maxWidth: .infinity)
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
                         .onChange(of: showResidualChart) { AppSettings.shared.showResidualChart = $0 }
@@ -171,6 +178,7 @@ struct SettingsFormContent: View, Equatable {
                         ),
                         items: ["JSON File", "SQLite Database"]
                     )
+                    .frame(height: 32).frame(maxWidth: .infinity)
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
                 }
@@ -187,6 +195,7 @@ struct SettingsFormContent: View, Equatable {
                         ),
                         items: SLAMFilterMode.allCases.map { $0.rawValue }
                     )
+                    .frame(height: 32).frame(maxWidth: .infinity)
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
                         .onChange(of: enableZUPT) { AppSettings.shared.enableZUPT = $0 }
@@ -216,6 +225,12 @@ struct SettingsFormContent: View, Equatable {
                     Button("Done") { isInputActive = false; endTextEditing() }.font(.headline).foregroundColor(.blue)
                 }
             }
+            // 后台轻量级监听底层模式变化，实现降级后 UI 的自动纠正
+            .onReceive(syncTimer) { _ in
+                if localNavMode != AppSettings.shared.coreNavMode {
+                    localNavMode = AppSettings.shared.coreNavMode
+                }
+            }
             .onAppear {
                 localNavMode = AppSettings.shared.coreNavMode
                 timeStr = String(AppSettings.shared.recordIntervalTime)
@@ -241,16 +256,24 @@ struct UIKitSegmentedPicker: UIViewRepresentable {
         control.selectedSegmentIndex = selection
         control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
         
-        // 废弃根据内容自适应宽度的逻辑，让其默认撑满父级容器
+        // 【核心机制1】允许滑块被父容器（如 Form）向内挤压收缩，严禁向外溢出导致拖拽失效
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
-        // 当文本过长时，在尾部使用 ... 截断，避免破坏布局
+        // 【核心机制2】强制均分，取消按内容文字长度分配宽度，让滑块整齐撑满屏幕
+        control.apportionsSegmentWidthsByContent = false
+        
+        // 【核心机制3】截断样式：如果均分后某一项文字太长，强制在尾部显示 “...” 截断
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
         paragraphStyle.alignment = .center
         
-        control.setTitleTextAttributes([
+        let attributes: [NSAttributedString.Key: Any] = [
             .paragraphStyle: paragraphStyle
-        ], for: .normal)
+        ]
+        
+        control.setTitleTextAttributes(attributes, for: .normal)
+        control.setTitleTextAttributes(attributes, for: .selected)
+        control.setTitleTextAttributes(attributes, for: .highlighted)
         
         return control
     }
@@ -311,8 +334,10 @@ struct DebugPanelView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 同样移除 Debug 面板里的限制，让其充满屏幕宽度
+            // Debug 面板同样应用全宽均分策略
             UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
+                .frame(height: 32)
+                .frame(maxWidth: .infinity)
                 .padding()
             
             ScrollView {
@@ -352,44 +377,56 @@ struct SensorsTabView: View {
 struct MLInfoTabView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     @State private var tick = 0
-    // 高频定时器 (20Hz)，专门突破底层 UI 冻结，确保状态与图表实时刷新
-    let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+    // 高频定时器强制拉取底层数据。采用平滑刷新方案，防止因为销毁重建导致闪屏拖拽卡顿。
+    let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            // 细化展示 NR (神经网络模型) 的实时状态与参数
             DebugRow(icon: "cpu", title: "NR Mode Status", value: engine.debugState.mlStatus)
             DebugRow(icon: "move.3d", title: "NR Predicted Vel", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
             DebugRow(icon: "bolt.badge.clock.fill", title: "NR Processing FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
             
             Divider()
-            Label("Data Compare: Raw IMU vs NR Output", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
+            Label("Data Compare: XY Residuals", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
             
-            // 数据解析比对：提取 IMU 原始残差与 NR 输出残差
-            let imuRes = engine.chartPoints.last?.accResidual ?? 0.0
-            let nrRes = engine.chartPoints.last?.residual ?? 0.0
+            // 提取底层传入的 X轴 和 Y轴 的残差数据 (需在引擎数据模型 ChartPoint 结构体中支持 resX 和 resY 属性)
+            let xRes = engine.chartPoints.last?.resX ?? 0.0
+            let yRes = engine.chartPoints.last?.resY ?? 0.0
             
-            DebugRow(icon: "waveform.path.ecg", title: "Raw IMU Input", value: String(format: "%.3f", imuRes))
-            DebugRow(icon: "bolt.horizontal.circle", title: "NR Data Output", value: String(format: "%.3f", nrRes))
+            DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m", xRes))
+                .foregroundColor(.blue)
+            DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
+                .foregroundColor(.red)
             
-            // 实时残差折线图绘制比对 (紫色表示原始 IMU, 橙色表示 NR 优化输出)
+            // X和Y双轨残差混合折线图对比
             if !engine.chartPoints.isEmpty {
                 Chart {
                     let firstTime = engine.chartPoints.first?.timestamp ?? 0
                     ForEach(engine.chartPoints) { point in
-                        AreaMark(
-                            x: .value("Time", point.timestamp - firstTime),
-                            y: .value("NR Output", point.residual)
-                        ).foregroundStyle(.orange.opacity(0.4))
+                        let time = point.timestamp - firstTime
                         
+                        // X 轴折线 (利用 Axis 的标签名自动触发图例)
                         LineMark(
-                            x: .value("Time", point.timestamp - firstTime),
-                            y: .value("Raw IMU", point.accResidual ?? 0)
-                        ).foregroundStyle(.purple)
+                            x: .value("Time", time),
+                            y: .value("Error", point.resX)
+                        )
+                        .foregroundStyle(by: .value("Axis", "X Res"))
+                        
+                        // Y 轴折线
+                        LineMark(
+                            x: .value("Time", time),
+                            y: .value("Error", point.resY)
+                        )
+                        .foregroundStyle(by: .value("Axis", "Y Res"))
                     }
                 }
+                // 为图表和图例绑定特定的色彩
+                .chartForegroundStyleScale([
+                    "X Res": .blue,
+                    "Y Res": .red
+                ])
                 .chartXAxis(.hidden)
-                .frame(height: 70)
+                .frame(height: 100)
             }
             
             Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
@@ -398,12 +435,11 @@ struct MLInfoTabView: View {
                 .padding(.top)
         }
         .padding()
-        // 接收定时器并更新 tick 状态
+        // 接收定时器，使用背景透明度欺骗 SwiftUI 进行轻量级平滑重绘，解决冻结问题
         .onReceive(timer) { _ in
-            tick += 1
+            tick &+= 1
         }
-        // 将 tick 绑定在父级 VStack，强制整个视图随时间戳强行重新求值和重绘
-        .id(tick)
+        .background(Color.clear.opacity(Double(tick % 2) * 0.00001))
     }
 }
 
@@ -420,7 +456,6 @@ struct AppLogsTabView: View {
     }
 }
 
-// 扩展了 DebugRow 支持传递 SF Symbols 图标
 struct DebugRow: View {
     var icon: String? = nil
     var title: String
