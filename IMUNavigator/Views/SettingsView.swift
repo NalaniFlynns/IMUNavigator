@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import Charts
 import Combine
 
@@ -64,20 +63,19 @@ struct SettingsFormContent: View, Equatable {
             Form {
                 Section(header: Text("Core Routing Engine")) {
                     VStack(alignment: .leading, spacing: 5) {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
-                                set: { newIndex in
-                                    let selectedMode = Array(CoreNavMode.allCases)[newIndex]
-                                    localNavMode = selectedMode
-                                    AppSettings.shared.coreNavMode = selectedMode
-                                    engine.switchNavMode(to: selectedMode)
-                                }
-                            ),
-                            items: CoreNavMode.allCases.map { $0.rawValue }
-                        )
-                        .frame(height: 32)
-                        .frame(maxWidth: .infinity)
+                        Picker("", selection: Binding(
+                            get: { localNavMode },
+                            set: { newMode in
+                                localNavMode = newMode
+                                AppSettings.shared.coreNavMode = newMode
+                                engine.switchNavMode(to: newMode)
+                            }
+                        )) {
+                            ForEach(CoreNavMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
                     
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
@@ -100,13 +98,23 @@ struct SettingsFormContent: View, Equatable {
                 Section(header: Text("Drift Compensation & Damping")) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("X-Axis Damping: \(String(format: "%.2f", dampingX))").font(.caption).foregroundColor(.gray)
-                        UIKitSlider(value: $dampingX, range: 0.0...1.0)
-                            .onChange(of: dampingX) { _, newValue in AppSettings.shared.dampingX = newValue }
+                        Slider(value: Binding(
+                            get: { dampingX },
+                            set: { val in
+                                dampingX = val
+                                AppSettings.shared.dampingX = val
+                            }
+                        ), in: 0.0...1.0)
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Y-Axis Damping: \(String(format: "%.2f", dampingY))").font(.caption).foregroundColor(.gray)
-                        UIKitSlider(value: $dampingY, range: 0.0...1.0)
-                            .onChange(of: dampingY) { _, newValue in AppSettings.shared.dampingY = newValue }
+                        Slider(value: Binding(
+                            get: { dampingY },
+                            set: { val in
+                                dampingY = val
+                                AppSettings.shared.dampingY = val
+                            }
+                        ), in: 0.0...1.0)
                     }
                     
                     HStack {
@@ -122,18 +130,17 @@ struct SettingsFormContent: View, Equatable {
                 }
                 
                 Section(header: Text("Recording Mode")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { recordingMode == .time ? 0 : 1 },
-                            set: { newIndex in 
-                                let mode: RecordingMode = newIndex == 0 ? .time : .distance
-                                recordingMode = mode
-                                AppSettings.shared.recordingMode = mode
-                            }
-                        ),
-                        items: ["By Time", "By Distance"]
-                    )
-                    .frame(height: 32).frame(maxWidth: .infinity)
+                    Picker("", selection: Binding(
+                        get: { recordingMode },
+                        set: { newMode in 
+                            recordingMode = newMode
+                            AppSettings.shared.recordingMode = newMode
+                        }
+                    )) {
+                        Text("By Time").tag(RecordingMode.time)
+                        Text("By Distance").tag(RecordingMode.distance)
+                    }
+                    .pickerStyle(.segmented)
                     
                     if recordingMode == .time {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalTime = d } } }
@@ -148,53 +155,53 @@ struct SettingsFormContent: View, Equatable {
                     Toggle("Show Error Chart", isOn: $showErrorChart)
                         .onChange(of: showErrorChart) { _, newValue in AppSettings.shared.showErrorChart = newValue }
                     if showErrorChart {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
-                                set: { newIndex in 
-                                    let mode = Array(ErrorChartMode.allCases)[newIndex]
-                                    errorChartMode = mode
-                                    AppSettings.shared.errorChartMode = mode
-                                }
-                            ),
-                            items: ErrorChartMode.allCases.map { $0.rawValue }
-                        )
-                        .frame(height: 32).frame(maxWidth: .infinity)
+                        Picker("", selection: Binding(
+                            get: { errorChartMode },
+                            set: { newMode in 
+                                errorChartMode = newMode
+                                AppSettings.shared.errorChartMode = newMode
+                            }
+                        )) {
+                            ForEach(ErrorChartMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
                         .onChange(of: showResidualChart) { _, newValue in AppSettings.shared.showResidualChart = newValue }
                 }
                 
                 Section(header: Text("Storage & Background")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { storageFormat == .json ? 0 : 1 },
-                            set: { newIndex in 
-                                let fmt: StorageFormat = newIndex == 0 ? .json : .sqlite
-                                storageFormat = fmt
-                                AppSettings.shared.storageFormat = fmt
-                            }
-                        ),
-                        items: ["JSON File", "SQLite Database"]
-                    )
-                    .frame(height: 32).frame(maxWidth: .infinity)
+                    Picker("", selection: Binding(
+                        get: { storageFormat },
+                        set: { newMode in 
+                            storageFormat = newMode
+                            AppSettings.shared.storageFormat = newMode
+                        }
+                    )) {
+                        Text("JSON File").tag(StorageFormat.json)
+                        Text("SQLite Database").tag(StorageFormat.sqlite)
+                    }
+                    .pickerStyle(.segmented)
+                    
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { _, newValue in AppSettings.shared.enableBackgroundRecording = newValue }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
-                            set: { newIndex in 
-                                let mode = Array(SLAMFilterMode.allCases)[newIndex]
-                                slamFilterMode = mode
-                                AppSettings.shared.slamFilterMode = mode
-                            }
-                        ),
-                        items: SLAMFilterMode.allCases.map { $0.rawValue }
-                    )
-                    .frame(height: 32).frame(maxWidth: .infinity)
+                    Picker("", selection: Binding(
+                        get: { slamFilterMode },
+                        set: { newMode in 
+                            slamFilterMode = newMode
+                            AppSettings.shared.slamFilterMode = newMode
+                        }
+                    )) {
+                        ForEach(SLAMFilterMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
                         .onChange(of: enableZUPT) { _, newValue in AppSettings.shared.enableZUPT = newValue }
@@ -224,7 +231,6 @@ struct SettingsFormContent: View, Equatable {
                     Button("Done") { isInputActive = false; endTextEditing() }.font(.headline).foregroundColor(.blue)
                 }
             }
-            // 后台轻量级监听底层模式变化，实现降级后 UI 的自动纠正
             .onReceive(syncTimer) { _ in
                 if localNavMode != AppSettings.shared.coreNavMode {
                     localNavMode = AppSettings.shared.coreNavMode
@@ -246,97 +252,18 @@ struct SettingsFormContent: View, Equatable {
     }
 }
 
-struct UIKitSegmentedPicker: UIViewRepresentable {
-    @Binding var selection: Int
-    let items: [String]
-    
-    func makeUIView(context: Context) -> UISegmentedControl {
-        let control = UISegmentedControl(items: items)
-        control.selectedSegmentIndex = selection
-        control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
-        
-
-        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        
-
-        control.apportionsSegmentWidthsByContent = false
-        
-
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = .byTruncatingTail
-        paragraphStyle.alignment = .center
-        
-        let attributes: [NSAttributedString.Key: Any] = [
-            .paragraphStyle: paragraphStyle
-        ]
-        
-        control.setTitleTextAttributes(attributes, for: .normal)
-        control.setTitleTextAttributes(attributes, for: .selected)
-        control.setTitleTextAttributes(attributes, for: .highlighted)
-        
-        return control
-    }
-    
-    func updateUIView(_ uiView: UISegmentedControl, context: Context) {
-        if uiView.selectedSegmentIndex != selection {
-            uiView.selectedSegmentIndex = selection
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject {
-        var parent: UIKitSegmentedPicker
-        init(_ parent: UIKitSegmentedPicker) { self.parent = parent }
-        @objc func valueChanged(_ sender: UISegmentedControl) {
-            parent.selection = sender.selectedSegmentIndex
-        }
-    }
-}
-
-struct UIKitSlider: UIViewRepresentable {
-    @Binding var value: Double
-    var range: ClosedRange<Double> = 0.0...1.0
-    
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider()
-        slider.minimumValue = Float(range.lowerBound)
-        slider.maximumValue = Float(range.upperBound)
-        slider.value = Float(value)
-        slider.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
-        return slider
-    }
-    
-    func updateUIView(_ uiView: UISlider, context: Context) {
-        if !uiView.isTracking && abs(Double(uiView.value) - value) > 0.001 {
-            uiView.value = Float(value)
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject {
-        var parent: UIKitSlider
-        init(_ parent: UIKitSlider) { self.parent = parent }
-        @objc func valueChanged(_ sender: UISlider) {
-            parent.value = Double(sender.value)
-        }
-    }
-}
-
 struct DebugPanelView: View {
     @State private var tab = 0
     
     var body: some View {
         VStack(spacing: 0) {
-            UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
-                .frame(height: 32)
-                .frame(maxWidth: .infinity)
-                .padding()
+            Picker("", selection: $tab) {
+                Text("Sensors").tag(0)
+                Text("ML Info").tag(1)
+                Text("App Logs").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .padding()
             
             ScrollView {
                 if tab == 0 {
@@ -385,13 +312,13 @@ struct MLInfoTabView: View {
             
             Divider()
             Label("Data Compare: XY Residuals", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
-        
+            
             let xRes = engine.chartPoints.last?.resX ?? 0.0
             let yRes = engine.chartPoints.last?.resY ?? 0.0
             
-            DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m", xRes))
+            DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m/s", xRes))
                 .foregroundColor(.blue)
-            DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
+            DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m/s", yRes))
                 .foregroundColor(.red)
             
             if !engine.chartPoints.isEmpty {
