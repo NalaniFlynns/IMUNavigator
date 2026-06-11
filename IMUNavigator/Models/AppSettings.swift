@@ -4,7 +4,7 @@ import Combine
 enum RecordingMode: String, Codable, CaseIterable, Identifiable { case time = "Time"; case distance = "Distance"; var id: String { self.rawValue } }
 enum StorageFormat: String, Codable, CaseIterable, Identifiable { case json = "JSON"; case sqlite = "SQLite"; var id: String { self.rawValue } }
 enum SLAMFilterMode: String, Codable, CaseIterable, Identifiable { case strict = "Strict"; case moderate = "Moderate"; case off = "Off"; var id: String { self.rawValue } }
-enum CoreNavMode: String, Codable, CaseIterable, Identifiable { case fusion = "Cascade Fusion (VIO->PDR->NR)"; case pureIMU = "Blind Mode (PDR->NR)"; var id: String { self.rawValue } }
+enum CoreNavMode: String, Codable, CaseIterable, Identifiable { case fusion = "Cascade Fusion"; case pureIMU = "Blind Mode"; var id: String { self.rawValue } }
 enum ErrorChartMode: String, Codable, CaseIterable, Identifiable { case cumulative = "Cumulative"; case instantaneous = "Instantaneous"; var id: String { self.rawValue } }
 
 class AppSettings: ObservableObject {
