@@ -57,7 +57,6 @@ struct SettingsFormContent: View, Equatable {
     @State private var zuptAccStr: String = ""
     @State private var zuptGyroStr: String = ""
     
-    // 独立探针：解决 Equatable 冻结导致算法自动降级 (NR) 时，UI 无法及时恢复切换的问题
     let syncTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -88,37 +87,37 @@ struct SettingsFormContent: View, Equatable {
                         HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
                     
-                    HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { if let d = Double($0) { AppSettings.shared.manualBiasX = d } } }
-                    HStack { Text("Bias Y"); Spacer(); TextField("Y", text: $biasYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasYStr) { if let d = Double($0) { AppSettings.shared.manualBiasY = d } } }
-                    HStack { Text("Bias Z"); Spacer(); TextField("Z", text: $biasZStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasZStr) { if let d = Double($0) { AppSettings.shared.manualBiasZ = d } } }
+                    HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.manualBiasX = d } } }
+                    HStack { Text("Bias Y"); Spacer(); TextField("Y", text: $biasYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasYStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.manualBiasY = d } } }
+                    HStack { Text("Bias Z"); Spacer(); TextField("Z", text: $biasZStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasZStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.manualBiasZ = d } } }
                     
                     Toggle("Enable SLAM Position Correction", isOn: $enableSLAM)
-                        .onChange(of: enableSLAM) { AppSettings.shared.enableSLAMCorrection = $0 }
+                        .onChange(of: enableSLAM) { _, newValue in AppSettings.shared.enableSLAMCorrection = newValue }
                     Toggle("Enable Dynamic Calibration (VIO)", isOn: $enableDynamicCalib)
-                        .onChange(of: enableDynamicCalib) { AppSettings.shared.enableDynamicCalibration = $0 }
+                        .onChange(of: enableDynamicCalib) { _, newValue in AppSettings.shared.enableDynamicCalibration = newValue }
                 }
                 
                 Section(header: Text("Drift Compensation & Damping")) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("X-Axis Damping: \(String(format: "%.2f", dampingX))").font(.caption).foregroundColor(.gray)
                         UIKitSlider(value: $dampingX, range: 0.0...1.0)
-                            .onChange(of: dampingX) { AppSettings.shared.dampingX = $0 }
+                            .onChange(of: dampingX) { _, newValue in AppSettings.shared.dampingX = newValue }
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Y-Axis Damping: \(String(format: "%.2f", dampingY))").font(.caption).foregroundColor(.gray)
                         UIKitSlider(value: $dampingY, range: 0.0...1.0)
-                            .onChange(of: dampingY) { AppSettings.shared.dampingY = $0 }
+                            .onChange(of: dampingY) { _, newValue in AppSettings.shared.dampingY = newValue }
                     }
                     
                     HStack {
                         Label("Global X Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("X", text: $driftXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftXStr) { if let d = Double($0) { AppSettings.shared.driftCompX = d } }
+                        TextField("X", text: $driftXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftXStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.driftCompX = d } }
                     }
                     HStack {
                         Label("Global Y Drift (m/s)", systemImage: "move.3d")
                         Spacer()
-                        TextField("Y", text: $driftYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftYStr) { if let d = Double($0) { AppSettings.shared.driftCompY = d } }
+                        TextField("Y", text: $driftYStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 60).onChange(of: driftYStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.driftCompY = d } }
                     }
                 }
                 
@@ -137,17 +136,17 @@ struct SettingsFormContent: View, Equatable {
                     .frame(height: 32).frame(maxWidth: .infinity)
                     
                     if recordingMode == .time {
-                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { if let d = Double($0) { AppSettings.shared.recordIntervalTime = d } } }
+                        HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalTime = d } } }
                     } else {
-                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { if let d = Double($0) { AppSettings.shared.recordIntervalSpace = d } } }
+                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalSpace = d } } }
                     }
                 }
                 
                 Section(header: Text("Charts Display")) {
                     Toggle("Show Altitude Chart", isOn: $showAltitudeChart)
-                        .onChange(of: showAltitudeChart) { AppSettings.shared.showAltitudeChart = $0 }
+                        .onChange(of: showAltitudeChart) { _, newValue in AppSettings.shared.showAltitudeChart = newValue }
                     Toggle("Show Error Chart", isOn: $showErrorChart)
-                        .onChange(of: showErrorChart) { AppSettings.shared.showErrorChart = $0 }
+                        .onChange(of: showErrorChart) { _, newValue in AppSettings.shared.showErrorChart = newValue }
                     if showErrorChart {
                         UIKitSegmentedPicker(
                             selection: Binding(
@@ -163,7 +162,7 @@ struct SettingsFormContent: View, Equatable {
                         .frame(height: 32).frame(maxWidth: .infinity)
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
-                        .onChange(of: showResidualChart) { AppSettings.shared.showResidualChart = $0 }
+                        .onChange(of: showResidualChart) { _, newValue in AppSettings.shared.showResidualChart = newValue }
                 }
                 
                 Section(header: Text("Storage & Background")) {
@@ -180,7 +179,7 @@ struct SettingsFormContent: View, Equatable {
                     )
                     .frame(height: 32).frame(maxWidth: .infinity)
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
-                        .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
+                        .onChange(of: enableBackgroundRecord) { _, newValue in AppSettings.shared.enableBackgroundRecording = newValue }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
@@ -198,21 +197,21 @@ struct SettingsFormContent: View, Equatable {
                     .frame(height: 32).frame(maxWidth: .infinity)
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
-                        .onChange(of: enableZUPT) { AppSettings.shared.enableZUPT = $0 }
+                        .onChange(of: enableZUPT) { _, newValue in AppSettings.shared.enableZUPT = newValue }
                     
-                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", text: $zuptAccStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptAccStr) { if let d = Double($0) { AppSettings.shared.zuptThreshold = d } } }
-                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", text: $zuptGyroStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptGyroStr) { if let d = Double($0) { AppSettings.shared.zuptGyroThreshold = d } } }
+                    HStack { Label("Accel Threshold", systemImage: "speedometer"); Spacer(); TextField("Accel", text: $zuptAccStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptAccStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.zuptThreshold = d } } }
+                    HStack { Label("Gyro Threshold", systemImage: "gyroscope"); Spacer(); TextField("Gyro", text: $zuptGyroStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: zuptGyroStr) { _, newValue in if let d = Double(newValue) { AppSettings.shared.zuptGyroThreshold = d } } }
                 }
                 
                 Section(header: Text("UI Toggles & Extra Logging")) {
                     Toggle("Auto Rotate (Heading Up)", isOn: $autoRotateCanvas)
-                        .onChange(of: autoRotateCanvas) { AppSettings.shared.autoRotateCanvas = $0 }
+                        .onChange(of: autoRotateCanvas) { _, newValue in AppSettings.shared.autoRotateCanvas = newValue }
                     Toggle("Log GNSS Data", isOn: $recordGNSS)
-                        .onChange(of: recordGNSS) { AppSettings.shared.recordGNSS = $0 }
+                        .onChange(of: recordGNSS) { _, newValue in AppSettings.shared.recordGNSS = newValue }
                     Toggle("Log Barometer Alt", isOn: $recordBarometer)
-                        .onChange(of: recordBarometer) { AppSettings.shared.recordBarometer = $0 }
+                        .onChange(of: recordBarometer) { _, newValue in AppSettings.shared.recordBarometer = newValue }
                     Toggle("Log 3-Axis Accel & Gyro", isOn: $recordAcceleration)
-                        .onChange(of: recordAcceleration) { AppSettings.shared.recordAcceleration = $0 }
+                        .onChange(of: recordAcceleration) { _, newValue in AppSettings.shared.recordAcceleration = newValue }
                 }
             }
             .navigationTitle("Configuration")
@@ -256,13 +255,13 @@ struct UIKitSegmentedPicker: UIViewRepresentable {
         control.selectedSegmentIndex = selection
         control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
         
-        // 【核心机制1】允许滑块被父容器（如 Form）向内挤压收缩，严禁向外溢出导致拖拽失效
+
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
-        // 【核心机制2】强制均分，取消按内容文字长度分配宽度，让滑块整齐撑满屏幕
+
         control.apportionsSegmentWidthsByContent = false
         
-        // 【核心机制3】截断样式：如果均分后某一项文字太长，强制在尾部显示 “...” 截断
+
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
         paragraphStyle.alignment = .center
@@ -334,7 +333,6 @@ struct DebugPanelView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Debug 面板同样应用全宽均分策略
             UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
                 .frame(height: 32)
                 .frame(maxWidth: .infinity)
@@ -377,7 +375,6 @@ struct SensorsTabView: View {
 struct MLInfoTabView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     @State private var tick = 0
-    // 高频定时器强制拉取底层数据。采用平滑刷新方案，防止因为销毁重建导致闪屏拖拽卡顿。
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -388,8 +385,7 @@ struct MLInfoTabView: View {
             
             Divider()
             Label("Data Compare: XY Residuals", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
-            
-            // 提取底层传入的 X轴 和 Y轴 的残差数据 (需在引擎数据模型 ChartPoint 结构体中支持 resX 和 resY 属性)
+        
             let xRes = engine.chartPoints.last?.resX ?? 0.0
             let yRes = engine.chartPoints.last?.resY ?? 0.0
             
@@ -398,29 +394,25 @@ struct MLInfoTabView: View {
             DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
                 .foregroundColor(.red)
             
-            // X和Y双轨残差混合折线图对比
             if !engine.chartPoints.isEmpty {
                 Chart {
                     let firstTime = engine.chartPoints.first?.timestamp ?? 0
                     ForEach(engine.chartPoints) { point in
                         let time = point.timestamp - firstTime
                         
-                        // X 轴折线 (利用 Axis 的标签名自动触发图例)
                         LineMark(
                             x: .value("Time", time),
-                            y: .value("Error", point.resX)
+                            y: .value("Error", point.resX ?? 0.0)
                         )
                         .foregroundStyle(by: .value("Axis", "X Res"))
                         
-                        // Y 轴折线
                         LineMark(
                             x: .value("Time", time),
-                            y: .value("Error", point.resY)
+                            y: .value("Error", point.resY ?? 0.0)
                         )
                         .foregroundStyle(by: .value("Axis", "Y Res"))
                     }
                 }
-                // 为图表和图例绑定特定的色彩
                 .chartForegroundStyleScale([
                     "X Res": .blue,
                     "Y Res": .red
@@ -435,7 +427,6 @@ struct MLInfoTabView: View {
                 .padding(.top)
         }
         .padding()
-        // 接收定时器，使用背景透明度欺骗 SwiftUI 进行轻量级平滑重绘，解决冻结问题
         .onReceive(timer) { _ in
             tick &+= 1
         }
