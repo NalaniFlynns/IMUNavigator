@@ -60,17 +60,21 @@ struct SettingsFormContent: View, Equatable {
             Form {
                 Section(header: Text("Core Routing Engine")) {
                     VStack(alignment: .leading, spacing: 5) {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
-                                set: { localNavMode = Array(CoreNavMode.allCases)[$0] }
-                            ),
-                            items: CoreNavMode.allCases.map { $0.rawValue }
-                        )
-                    }
-                    .onChange(of: localNavMode) { m in
-                        AppSettings.shared.coreNavMode = m
-                        engine.switchNavMode(to: m)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            UIKitSegmentedPicker(
+                                selection: Binding(
+                                    get: { Array(CoreNavMode.allCases).firstIndex(of: localNavMode) ?? 0 },
+                                    set: { newIndex in
+                                        let selectedMode = Array(CoreNavMode.allCases)[newIndex]
+                                        localNavMode = selectedMode
+                                        AppSettings.shared.coreNavMode = selectedMode
+                                        engine.switchNavMode(to: selectedMode)
+                                    }
+                                ),
+                                items: CoreNavMode.allCases.map { $0.rawValue }
+                            )
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
                     
                     Button("Static Bias Calibration") { showCalibration = true }.foregroundColor(.blue)
@@ -115,13 +119,16 @@ struct SettingsFormContent: View, Equatable {
                 }
                 
                 Section(header: Text("Recording Mode")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { recordingMode == .time ? 0 : 1 },
-                            set: { recordingMode = $0 == 0 ? .time : .distance }
-                        ),
-                        items: ["By Time", "By Distance"]
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { recordingMode == .time ? 0 : 1 },
+                                set: { recordingMode = $0 == 0 ? .time : .distance }
+                            ),
+                            items: ["By Time", "By Distance"]
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     .onChange(of: recordingMode) { AppSettings.shared.recordingMode = $0 }
                     
                     if recordingMode == .time {
@@ -137,13 +144,16 @@ struct SettingsFormContent: View, Equatable {
                     Toggle("Show Error Chart", isOn: $showErrorChart)
                         .onChange(of: showErrorChart) { AppSettings.shared.showErrorChart = $0 }
                     if showErrorChart {
-                        UIKitSegmentedPicker(
-                            selection: Binding(
-                                get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
-                                set: { errorChartMode = Array(ErrorChartMode.allCases)[$0] }
-                            ),
-                            items: ErrorChartMode.allCases.map { $0.rawValue }
-                        )
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            UIKitSegmentedPicker(
+                                selection: Binding(
+                                    get: { Array(ErrorChartMode.allCases).firstIndex(of: errorChartMode) ?? 0 },
+                                    set: { errorChartMode = Array(ErrorChartMode.allCases)[$0] }
+                                ),
+                                items: ErrorChartMode.allCases.map { $0.rawValue }
+                            )
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
                         .onChange(of: errorChartMode) { AppSettings.shared.errorChartMode = $0 }
                     }
                     Toggle("Show Residual Chart", isOn: $showResidualChart)
@@ -151,26 +161,32 @@ struct SettingsFormContent: View, Equatable {
                 }
                 
                 Section(header: Text("Storage & Background")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { storageFormat == .json ? 0 : 1 },
-                            set: { storageFormat = $0 == 0 ? .json : .sqlite }
-                        ),
-                        items: ["JSON File", "SQLite Database"]
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { storageFormat == .json ? 0 : 1 },
+                                set: { storageFormat = $0 == 0 ? .json : .sqlite }
+                            ),
+                            items: ["JSON File", "SQLite Database"]
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     .onChange(of: storageFormat) { AppSettings.shared.storageFormat = $0 }
                     Toggle("Enable Background Logging", isOn: $enableBackgroundRecord)
                         .onChange(of: enableBackgroundRecord) { AppSettings.shared.enableBackgroundRecording = $0 }
                 }
                 
                 Section(header: Text("Algorithm Control")) {
-                    UIKitSegmentedPicker(
-                        selection: Binding(
-                            get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
-                            set: { slamFilterMode = Array(SLAMFilterMode.allCases)[$0] }
-                        ),
-                        items: SLAMFilterMode.allCases.map { $0.rawValue }
-                    )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        UIKitSegmentedPicker(
+                            selection: Binding(
+                                get: { Array(SLAMFilterMode.allCases).firstIndex(of: slamFilterMode) ?? 0 },
+                                set: { slamFilterMode = Array(SLAMFilterMode.allCases)[$0] }
+                            ),
+                            items: SLAMFilterMode.allCases.map { $0.rawValue }
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
                     .onChange(of: slamFilterMode) { AppSettings.shared.slamFilterMode = $0 }
                     
                     Toggle("Enable ZUPT", isOn: $enableZUPT)
@@ -202,6 +218,8 @@ struct SettingsFormContent: View, Equatable {
                 }
             }
             .onAppear {
+                localNavMode = AppSettings.shared.coreNavMode
+                
                 timeStr = String(AppSettings.shared.recordIntervalTime)
                 spaceStr = String(AppSettings.shared.recordIntervalSpace)
                 biasXStr = String(AppSettings.shared.manualBiasX)
@@ -223,6 +241,7 @@ struct UIKitSegmentedPicker: UIViewRepresentable {
     func makeUIView(context: Context) -> UISegmentedControl {
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = selection
+        control.apportionsSegmentWidthsByContent = true
         control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
         return control
     }
@@ -283,8 +302,11 @@ struct DebugPanelView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
-                .padding()
+            ScrollView(.horizontal, showsIndicators: false) {
+                UIKitSegmentedPicker(selection: $tab, items: ["Sensors", "ML Info", "App Logs"])
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding()
             
             ScrollView {
                 if tab == 0 {
