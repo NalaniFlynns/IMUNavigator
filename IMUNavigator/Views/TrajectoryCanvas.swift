@@ -1,6 +1,20 @@
 import SwiftUI
 import simd
 
+struct VisualEffectView: UIViewRepresentable {
+    var effect: UIVisualEffect?
+    
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let view = UIVisualEffectView(effect: effect)
+        view.isUserInteractionEnabled = false
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
+        uiView.effect = effect
+    }
+}
+
 struct TrajectoryCanvas: View {
     var points: [TrackingPoint]
     var bounds: RenderBounds
@@ -62,7 +76,6 @@ struct TrajectoryCanvas: View {
                     context.scaleBy(x: currentScale, y: -currentScale)
                     context.translateBy(x: -currentCenter.x, y: -currentCenter.y)
                     
-                    // LOD Pixel Threshold Overdraw Optimization
                     let pixelThreshold: CGFloat = 2.0
                     var lastDrawnIndex = 0
                     
@@ -97,7 +110,7 @@ struct TrajectoryCanvas: View {
                 
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: { if isAutoTracking { zoomLevelIndex = (zoomLevelIndex + 1) % zoomLevels.count } else { isAutoTracking = true; zoomLevelIndex = 1 } }) {
-                        HStack { Image(systemName: isAutoTracking ? "lock.fill" : "lock.open.fill"); Text(isAutoTracking ? "Zoom: \(zoomLevels[zoomLevelIndex], specifier: "%.1f")x" : "Restore Auto") }.font(.caption).padding(8).background(.ultraThinMaterial).cornerRadius(8)
+                        HStack { Image(systemName: isAutoTracking ? "lock.fill" : "lock.open.fill"); Text(isAutoTracking ? "Zoom: \(zoomLevels[zoomLevelIndex], specifier: "%.1f")x" : "Restore Auto") }.font(.caption).padding(8).background(VisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))).cornerRadius(8)
                     }.buttonStyle(.plain)
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -105,7 +118,8 @@ struct TrajectoryCanvas: View {
                         if !points.isEmpty { HStack(spacing: 4) { LinearGradient(gradient: Gradient(colors: [.red, .green, .blue]), startPoint: .top, endPoint: .bottom).frame(width: 4, height: 60).cornerRadius(2); VStack(alignment: .leading) { Text("\(bounds.maxZ, specifier: "%.1f")").font(.system(size: 8)).foregroundColor(.secondary); Spacer(); Text("\(bounds.minZ, specifier: "%.1f")").font(.system(size: 8)).foregroundColor(.secondary) } }.frame(height: 60) }
                     }.padding(.leading, 8)
                 }.padding(8)
-                VStack { Spacer(); HStack { Spacer(); ZStack { Circle().fill(.ultraThinMaterial).frame(width: 36, height: 36); VStack(spacing: 0) { Text("N").font(.system(size: 10, weight: .bold)).foregroundColor(.red); Image(systemName: "location.north.fill").foregroundColor(.red) }.rotationEffect(currentRotation) }.padding(8) } }
+                
+                VStack { Spacer(); HStack { Spacer(); ZStack { Circle().fill(Color.clear).background(VisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial)).clipShape(Circle())).frame(width: 36, height: 36); VStack(spacing: 0) { Text("N").font(.system(size: 10, weight: .bold)).foregroundColor(.red); Image(systemName: "location.north.fill").foregroundColor(.red) }.rotationEffect(currentRotation) }.padding(8) } }
             }
             .gesture(panGesture.simultaneously(with: zoomGesture).simultaneously(with: rotGesture))
         }
