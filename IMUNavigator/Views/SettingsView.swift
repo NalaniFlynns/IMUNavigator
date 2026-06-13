@@ -28,6 +28,7 @@ struct SystemDebugState {
     var mlFPS: Double = 0.0
 }
 
+// --- 日志等级与结构体 ---
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
     case info = "INFO"
@@ -66,6 +67,7 @@ class AppLogger: ObservableObject {
     static let shared = AppLogger()
     @Published var logs: [LogEntry] = []
     
+    // 增加 level 参数，默认 INFO，兼容之前的代码调用
     func log(_ message: String, level: LogLevel = .info) {
         let entry = LogEntry(timestamp: Date(), level: level, message: message)
         DispatchQueue.main.async {
@@ -164,8 +166,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         arSession.delegate = self; locationManager.delegate = self
         locationManager.requestAlwaysAuthorization(); locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.allowsBackgroundLocationUpdates = true; locationManager.pausesLocationUpdatesAutomatically = false
-        NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         
         AppLogger.shared.log("System Initialized.", level: .info)
         if motionManager.isDeviceMotionAvailable {
@@ -214,39 +216,21 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     
     func stopRecording() {
         UIApplication.shared.isIdleTimerDisabled = false
-        self.arSession.pause()
         engineQueue.async { [weak self] in guard let self = self else { return }
             AppLogger.shared.log("Session Stopped.", level: .info)
-            self.locationManager.stopUpdatingLocation(); self.locationManager.stopUpdatingHeading(); self.altimeter.stopRelativeAltitudeUpdates(); self.bleScanner.stopScanning()
+            self.arSession.pause(); self.locationManager.stopUpdatingLocation(); self.locationManager.stopUpdatingHeading(); self.altimeter.stopRelativeAltitudeUpdates(); self.bleScanner.stopScanning()
             self.activityManager.stopActivityUpdates(); self.pedometer.stopUpdates()
             self.saveSessionData(); self.stopLiveActivity()
             DispatchQueue.main.async { self.isRecording = false; self.statusText = "Stopped"; self.activeEngine = "Stopped"; self.navState = "Stopped" }
         }
     }
     
-    func switchNavMode(to mode: CoreNavMode) { guard isRecording else { return }; engineQueue.async { AppLogger.shared.log("Switched to \(mode.rawValue)", level: .warning); if mode == .fusion && !self.isInBackground { self.wasImuOnly = true; let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; self.arSession.run(config, options: [.resetTracking]); DispatchQueue.main.async { self.statusText = "Active" } } else { self.arSession.pause(); DispatchQueue.main.async { self.statusText = "Active (Blind)" } } } }
+    func switchNavMode(to mode: CoreNavMode) { guard isRecording else { return }; engineQueue.async { AppLogger.shared.log("Switched to \(mode.rawValue)", level: .info); if mode == .fusion && !self.isInBackground { self.wasImuOnly = true; let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; self.arSession.run(config, options: [.resetTracking]); DispatchQueue.main.async { self.statusText = "Active" } } else { self.arSession.pause(); DispatchQueue.main.async { self.statusText = "Active (Blind)" } } } }
     
     func triggerManualCalibration(completion: @escaping () -> Void) { engineQueue.async { AppLogger.shared.log("Calibration Started...", level: .debug); self.tempAccBiasSum = simd_double3(0,0,0); self.calibrationSamples = 0; self.calibrationStartTime = 0; DispatchQueue.main.async { self.calibrationCompletionBlock = completion; self.isCalibrating = true; self.calibrationProgress = 0.0 } } }
     
-    @objc private func appWillResignActive() {
-        arSession.pause()
-        isInBackground = true
-        if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }
-        AppLogger.shared.log("Entered Background", level: .warning)
-        DispatchQueue.main.async { self.statusText = "Background" } 
-    }
-    
-    @objc private func appDidBecomeActive() { 
-        if !isRecording { return }
-        isInBackground = false
-        AppLogger.shared.log("Entered Foreground", level: .info)
-        if AppSettings.shared.coreNavMode == .fusion { 
-            let config = ARWorldTrackingConfiguration()
-            config.worldAlignment = .gravityAndHeading
-            arSession.run(config, options: []) 
-        }
-        DispatchQueue.main.async { self.statusText = "Active" } 
-    }
+    @objc private func appDidEnterBackground() { if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }; isInBackground = true; arSession.pause(); AppLogger.shared.log("Entered Background", level: .warning); DispatchQueue.main.async { self.statusText = "Background" } }
+    @objc private func appWillEnterForeground() { if !isRecording { return }; isInBackground = false; AppLogger.shared.log("Entered Foreground", level: .info); if AppSettings.shared.coreNavMode == .fusion { let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; arSession.run(config, options: []) }; DispatchQueue.main.async { self.statusText = "Active" } }
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isRecording, !isInBackground, AppSettings.shared.coreNavMode == .fusion else { return }
@@ -267,7 +251,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 if self.wasImuOnly { 
                     self.slamOffset = self.globalPosition - rawSlamPos; self.wasImuOnly = false; 
                     self.lastAlignedSlamPos = rawSlamPos + self.slamOffset; self.lastSlamTimestamp = frame.timestamp; 
-                    AppLogger.shared.log("VIO Resumed & Offset Aligned.", level: .warning)
+                    AppLogger.shared.log("VIO Resumed & Offset Aligned.", level: .info)
                     return 
                 }
                 
@@ -641,6 +625,12 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     private func stopLiveActivity() { guard let act = liveActivity else { return }; Task { await act.end(ActivityContent(state: INSActivityAttributes.ContentState(distance: totalDistance, speed: 0, statusText: "Completed", activeEngine: "Stopped", motionState: "Stopped", isZUPT: true), staleDate: nil), dismissalPolicy: .default) } }
 }
 
+extension View {
+    func endTextEditing() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     
@@ -835,6 +825,7 @@ struct SettingsFormContent: View, Equatable {
                         .onChange(of: recordAcceleration) { _, newValue in AppSettings.shared.recordAcceleration = newValue }
                 }
                 
+                // --- 关于与赞助模块 ---
                 Section(header: Text("About & Support")) {
                     VStack(spacing: 12) {
                         HStack(spacing: 15) {
@@ -942,6 +933,7 @@ struct SettingsFormContent: View, Equatable {
     }
 }
 
+// --- 赞赏页面 ---
 struct SponsorView: View {
     @State private var showCopyToast = false
     
@@ -1330,6 +1322,7 @@ struct MLInfoTabView: View {
     }
 }
 
+// --- 日志查看页面 ---
 struct AppLogsTabView: View {
     @ObservedObject var logger = AppLogger.shared
     @State private var selectedLevel: LogLevel = .debug
@@ -1357,8 +1350,8 @@ struct AppLogsTabView: View {
                 Text(log.formattedString)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(log.level.color)
-                    .textSelection(.enabled)
-                    .contextMenu {
+                    .textSelection(.enabled) // 支持手动框选复制
+                    .contextMenu { // 支持长按整行复制
                         Button {
                             UIPasteboard.general.string = log.formattedString
                         } label: {
