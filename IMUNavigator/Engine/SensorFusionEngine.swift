@@ -28,7 +28,6 @@ struct SystemDebugState {
     var mlFPS: Double = 0.0
 }
 
-// --- 新增：日志等级与日志条目模型 ---
 enum LogLevel: String, CaseIterable, Comparable {
     case debug = "DEBUG"
     case info = "INFO"
@@ -67,7 +66,6 @@ class AppLogger: ObservableObject {
     static let shared = AppLogger()
     @Published var logs: [LogEntry] = []
     
-    // 增加 level 参数，默认 INFO
     func log(_ message: String, level: LogLevel = .info) {
         let entry = LogEntry(timestamp: Date(), level: level, message: message)
         DispatchQueue.main.async {
@@ -233,6 +231,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     @objc private func appWillResignActive() {
         arSession.pause()
         isInBackground = true
+        // 🌟 通知 CoreML 模型切换至后台 CPU 计算防崩溃
+        RoNINModelWrapper.shared.switchToBackgroundMode(true)
         if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }
         AppLogger.shared.log("Entered Background", level: .warning)
         DispatchQueue.main.async { self.statusText = "Background" } 
@@ -241,6 +241,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     @objc private func appDidBecomeActive() { 
         if !isRecording { return }
         isInBackground = false
+        // 🌟 恢复全功率 GPU / ANE 推断加速
+        RoNINModelWrapper.shared.switchToBackgroundMode(false)
         AppLogger.shared.log("Entered Foreground", level: .info)
         if AppSettings.shared.coreNavMode == .fusion { 
             let config = ARWorldTrackingConfiguration()
@@ -462,11 +464,17 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                                 DispatchQueue.main.async { self.debugState.mlFPS = mFps }
                                 self.mlFrameCount = 0; self.lastMLFPSTime = nowML
                             }
-                            if let v = vel { self.latestMLVelocity = v }
+                            // 如果预测出错，这里被赋值为nil，触发底下的自动降级
+                            self.latestMLVelocity = vel
                         }
-                        DispatchQueue.main.async { self.debugState.mlStatus = msg; if let v = vel { self.debugState.mlVelocity = v } }
+                        DispatchQueue.main.async { 
+                            self.debugState.mlStatus = msg
+                            if let v = vel { self.debugState.mlVelocity = v } 
+                        }
                     }
                 }
+                
+                // 🌟 核心判断：如果有健康输出就用，一旦遇到报错/数据不足产生的 nil，立即智能降级
                 if let mlVel = self.latestMLVelocity {
                     let vx_global = mlVel.x * cos(-trueYawRad) + mlVel.y * sin(-trueYawRad)
                     let vy_global = -mlVel.x * sin(-trueYawRad) + mlVel.y * cos(-trueYawRad)
@@ -475,10 +483,26 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     vy_raw = vy_global - AppSettings.shared.driftCompY
                     dx_raw = vx_raw * dt; dy_raw = vy_raw * dt; actEngine = .neuralNR
                 } else {
-                    let v_next_xy = simd_double2(self.currentVelocity.x, self.currentVelocity.y) + simd_double2(correctedAcc.x, correctedAcc.y) * dt
-                    let damped_v_xy = v_next_xy * 0.985
-                    dx_raw = 0.5 * (self.currentVelocity.x + damped_v_xy.x) * dt; dy_raw = 0.5 * (self.currentVelocity.y + damped_v_xy.y) * dt
-                    vx_raw = damped_v_xy.x; vy_raw = damped_v_xy.y; actEngine = .imuFallback
+                    // 🌟 降级后路：最优化的自适应 Pure IMU，延长发散时间
+                    // 1: 姿态误差底噪死区剥离（剔除无用微颤造成的假漂移）
+                    let deadZone = 0.15
+                    let effectiveAccX = abs(correctedAcc.x) > deadZone ? correctedAcc.x : 0.0
+                    let effectiveAccY = abs(correctedAcc.y) > deadZone ? correctedAcc.y : 0.0
+                    
+                    // 2: 依据运动强度自适应阻尼
+                    let accMagXY = length(simd_double2(effectiveAccX, effectiveAccY))
+                    let isAccelerating = accMagXY > 0.5
+                    let dynamicDamping = isAccelerating ? 0.995 : 0.95
+                    
+                    let v_next_xy = simd_double2(self.currentVelocity.x, self.currentVelocity.y) + simd_double2(effectiveAccX, effectiveAccY) * dt
+                    let damped_v_xy = v_next_xy * dynamicDamping
+                    
+                    // 3: 梯形平滑积分计算坐标
+                    dx_raw = 0.5 * (self.currentVelocity.x + damped_v_xy.x) * dt
+                    dy_raw = 0.5 * (self.currentVelocity.y + damped_v_xy.y) * dt
+                    vx_raw = damped_v_xy.x
+                    vy_raw = damped_v_xy.y
+                    actEngine = .imuFallback
                 }
             }
             
