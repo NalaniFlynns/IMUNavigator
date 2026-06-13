@@ -28,6 +28,13 @@ An advanced iOS sensor fusion engine integrating ARKit (VIO), Pedestrian Dead Re
 * Sensors & Core API: CoreMotion, ARKit, CoreLocation
 * Machine Learning: CoreML (RoNIN implementation)
 
+### 💖 Support the Project
+IMUNavigator is an open-source initiative. If you find this project helpful for your research or daily use, consider buying the developer a coffee to support continuous development and ML model training!
+<br>
+<img src="IMUNavigator/Assets.xcassets/SponsorCode.imageset/sponsor.jpg" width="250" alt="Sponsor Code"/>
+
+*(You can also support directly inside the App's Settings -> About & Support)*
+
 ### Installation
 
 1. Clone the repository:
@@ -38,6 +45,7 @@ An advanced iOS sensor fusion engine integrating ARKit (VIO), Pedestrian Dead Re
 
 ### License
 This project is licensed under the MIT License.
+
 
 ---
 
@@ -63,6 +71,13 @@ This project is licensed under the MIT License.
 * 底层框架: CoreMotion, ARKit, CoreLocation
 * 机器学习: CoreML (基于 RoNIN 架构的模型部署)
 
+### 💖 赞赏与支持
+IMUNavigator 是一款个人开源项目。如果您觉得这个项目对您的课题研究或日常使用有帮助，欢迎请开发者喝杯咖啡，您的支持将用于维持项目的持续开发与机器学习模型的训练优化！
+<br>
+<img src="IMUNavigator/Assets.xcassets/SponsorCode.imageset/sponsor.jpg" width="250" alt="赞赏码"/>
+
+*（您也可以直接在 App 内部的「Settings -> About & Support」中扫码进行赞赏）*
+
 ### 安装指南
 
 1. 克隆本仓库到本地:
@@ -73,3 +88,4 @@ This project is licensed under the MIT License.
 
 ### 开源协议
 本项目基于 MIT 协议开源。
+
