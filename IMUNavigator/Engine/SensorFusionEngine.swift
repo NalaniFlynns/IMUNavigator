@@ -28,17 +28,53 @@ struct SystemDebugState {
     var mlFPS: Double = 0.0
 }
 
+// --- 新增：日志等级与日志条目模型 ---
+enum LogLevel: String, CaseIterable, Comparable {
+    case debug = "DEBUG"
+    case info = "INFO"
+    case warning = "WARN"
+    case error = "ERROR"
+    
+    static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
+        let order: [LogLevel: Int] = [.debug: 0, .info: 1, .warning: 2, .error: 3]
+        return order[lhs]! < order[rhs]!
+    }
+    
+    var color: Color {
+        switch self {
+        case .debug: return .gray
+        case .info: return .green
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+}
+
+struct LogEntry: Hashable, Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let level: LogLevel
+    let message: String
+    
+    var formattedString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return "[\(formatter.string(from: timestamp))] [\(level.rawValue)] \(message)"
+    }
+}
+
 class AppLogger: ObservableObject {
     static let shared = AppLogger()
-    @Published var logs: [String] = []
-    func log(_ message: String) {
-        let formatter = DateFormatter(); formatter.dateFormat = "HH:mm:ss.SSS"
-        let msg = "[\(formatter.string(from: Date()))] \(message)"
+    @Published var logs: [LogEntry] = []
+    
+    // 增加 level 参数，默认 INFO
+    func log(_ message: String, level: LogLevel = .info) {
+        let entry = LogEntry(timestamp: Date(), level: level, message: message)
         DispatchQueue.main.async {
-            self.logs.insert(msg, at: 0)
+            self.logs.insert(entry, at: 0)
             if self.logs.count > 500 { self.logs.removeLast() }
         }
-        print(msg)
+        print(entry.formattedString)
     }
 }
 
@@ -133,7 +169,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         
-        AppLogger.shared.log("System Initialized.")
+        AppLogger.shared.log("System Initialized.", level: .info)
         if motionManager.isDeviceMotionAvailable {
             motionManager.deviceMotionUpdateInterval = 1.0 / 200.0
             motionManager.showsDeviceMovementDisplay = true
@@ -147,7 +183,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     func startRecording() {
         UIApplication.shared.isIdleTimerDisabled = true
         engineQueue.async { [weak self] in guard let self = self else { return }
-            AppLogger.shared.log("Session Started. Mode: \(AppSettings.shared.coreNavMode.rawValue)")
+            AppLogger.shared.log("Session Started. Mode: \(AppSettings.shared.coreNavMode.rawValue)", level: .info)
             DispatchQueue.main.async {
                 self.isRecording = true; self.dbPoints.removeAll(); self.renderPoints.removeAll(); self.chartPoints.removeAll()
                 self.pureARPoints.removeAll(); self.pureBlindPoints.removeAll(); self.windowAR.removeAll(); self.windowBlind.removeAll()
@@ -182,7 +218,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         UIApplication.shared.isIdleTimerDisabled = false
         self.arSession.pause()
         engineQueue.async { [weak self] in guard let self = self else { return }
-            AppLogger.shared.log("Session Stopped.")
+            AppLogger.shared.log("Session Stopped.", level: .info)
             self.locationManager.stopUpdatingLocation(); self.locationManager.stopUpdatingHeading(); self.altimeter.stopRelativeAltitudeUpdates(); self.bleScanner.stopScanning()
             self.activityManager.stopActivityUpdates(); self.pedometer.stopUpdates()
             self.saveSessionData(); self.stopLiveActivity()
@@ -190,22 +226,22 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         }
     }
     
-    func switchNavMode(to mode: CoreNavMode) { guard isRecording else { return }; engineQueue.async { AppLogger.shared.log("Switched to \(mode.rawValue)"); if mode == .fusion && !self.isInBackground { self.wasImuOnly = true; let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; self.arSession.run(config, options: [.resetTracking]); DispatchQueue.main.async { self.statusText = "Active" } } else { self.arSession.pause(); DispatchQueue.main.async { self.statusText = "Active (Blind)" } } } }
+    func switchNavMode(to mode: CoreNavMode) { guard isRecording else { return }; engineQueue.async { AppLogger.shared.log("Switched to \(mode.rawValue)", level: .info); if mode == .fusion && !self.isInBackground { self.wasImuOnly = true; let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; self.arSession.run(config, options: [.resetTracking]); DispatchQueue.main.async { self.statusText = "Active" } } else { self.arSession.pause(); DispatchQueue.main.async { self.statusText = "Active (Blind)" } } } }
     
-    func triggerManualCalibration(completion: @escaping () -> Void) { engineQueue.async { AppLogger.shared.log("Calibration Started..."); self.tempAccBiasSum = simd_double3(0,0,0); self.calibrationSamples = 0; self.calibrationStartTime = 0; DispatchQueue.main.async { self.calibrationCompletionBlock = completion; self.isCalibrating = true; self.calibrationProgress = 0.0 } } }
+    func triggerManualCalibration(completion: @escaping () -> Void) { engineQueue.async { AppLogger.shared.log("Calibration Started...", level: .debug); self.tempAccBiasSum = simd_double3(0,0,0); self.calibrationSamples = 0; self.calibrationStartTime = 0; DispatchQueue.main.async { self.calibrationCompletionBlock = completion; self.isCalibrating = true; self.calibrationProgress = 0.0 } } }
     
     @objc private func appWillResignActive() {
         arSession.pause()
         isInBackground = true
         if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }
-        AppLogger.shared.log("Entered Background")
+        AppLogger.shared.log("Entered Background", level: .warning)
         DispatchQueue.main.async { self.statusText = "Background" } 
     }
     
     @objc private func appDidBecomeActive() { 
         if !isRecording { return }
         isInBackground = false
-        AppLogger.shared.log("Entered Foreground")
+        AppLogger.shared.log("Entered Foreground", level: .info)
         if AppSettings.shared.coreNavMode == .fusion { 
             let config = ARWorldTrackingConfiguration()
             config.worldAlignment = .gravityAndHeading
@@ -233,7 +269,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 if self.wasImuOnly { 
                     self.slamOffset = self.globalPosition - rawSlamPos; self.wasImuOnly = false; 
                     self.lastAlignedSlamPos = rawSlamPos + self.slamOffset; self.lastSlamTimestamp = frame.timestamp; 
-                    AppLogger.shared.log("VIO Resumed & Offset Aligned.")
+                    AppLogger.shared.log("VIO Resumed & Offset Aligned.", level: .info)
                     return 
                 }
                 
@@ -332,7 +368,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     DispatchQueue.main.async {
                         AppSettings.shared.manualBiasX = finalBias.x; AppSettings.shared.manualBiasY = finalBias.y; AppSettings.shared.manualBiasZ = finalBias.z
                         self.isCalibrating = false; self.calibrationCompletionBlock?(); self.calibrationCompletionBlock = nil
-                        AppLogger.shared.log("Calibration Done: X:\(String(format:"%.3f",finalBias.x)) Y:\(String(format:"%.3f",finalBias.y))")
+                        AppLogger.shared.log("Calibration Done: X:\(String(format:"%.3f",finalBias.x)) Y:\(String(format:"%.3f",finalBias.y))", level: .info)
                     }
                 }
                 return
@@ -601,7 +637,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) { currentGNSS = locations.last }
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) { currentHeading = newHeading.trueHeading }
-    private func saveSessionData() { guard let meta = sessionMetadata else { return }; let session = TrackingSession(id: UUID(), metadata: meta, endTime: Date(), points: dbPoints, totalDistance: totalDistance); StorageManager.shared.saveSession(session, format: AppSettings.shared.storageFormat); AppLogger.shared.log("Session Saved.") }
+    private func saveSessionData() { guard let meta = sessionMetadata else { return }; let session = TrackingSession(id: UUID(), metadata: meta, endTime: Date(), points: dbPoints, totalDistance: totalDistance); StorageManager.shared.saveSession(session, format: AppSettings.shared.storageFormat); AppLogger.shared.log("Session Saved.", level: .info) }
     private func startLiveActivity() { guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }; do { liveActivity = try Activity.request(attributes: INSActivityAttributes(sessionName: "INS"), content: ActivityContent(state: INSActivityAttributes.ContentState(distance: 0, speed: 0, statusText: "Starting", activeEngine: activeEngine, motionState: motionStateStr, isZUPT: false), staleDate: nil), pushType: nil) } catch {} }
     private func updateLiveActivity() { guard let act = liveActivity else { return }; Task { await act.update(ActivityContent(state: INSActivityAttributes.ContentState(distance: totalDistance, speed: currentSpeed, statusText: statusText, activeEngine: activeEngine, motionState: motionStateStr, isZUPT: isZUPTActive), staleDate: nil)) } }
     private func stopLiveActivity() { guard let act = liveActivity else { return }; Task { await act.end(ActivityContent(state: INSActivityAttributes.ContentState(distance: totalDistance, speed: 0, statusText: "Completed", activeEngine: "Stopped", motionState: "Stopped", isZUPT: true), staleDate: nil), dismissalPolicy: .default) } }
