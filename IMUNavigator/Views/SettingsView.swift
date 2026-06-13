@@ -368,6 +368,9 @@ struct SensorsTabView: View {
 struct MLInfoTabView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     @State private var tick = 0
+    // 0: IMU vs ML 对比, 1: NR vs AR 残差对比
+    @State private var chartModeIndex: Int = 1 
+    
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -377,41 +380,104 @@ struct MLInfoTabView: View {
             DebugRow(icon: "bolt.badge.clock.fill", title: "NR Processing FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
             
             Divider()
-            Label("Data Compare: XY Residuals", systemImage: "chart.xyaxis.line").font(.headline).foregroundColor(.primary)
-        
-            let xRes = engine.chartPoints.last?.resX ?? 0.0
-            let yRes = engine.chartPoints.last?.resY ?? 0.0
             
-            DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m", xRes))
-                .foregroundColor(.blue)
-            DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
-                .foregroundColor(.red)
+            // 使用与顶部同源的 UIKitSegmentedPicker 作为切换滑块
+            UIKitSegmentedPicker(selection: $chartModeIndex, items: ["IMU vs ML", "NR vs AR"])
+                .frame(height: 32)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 5)
             
-            if !engine.chartPoints.isEmpty {
-                Chart {
-                    let firstTime = engine.chartPoints.first?.timestamp ?? 0
-                    ForEach(engine.chartPoints) { point in
-                        let time = point.timestamp - firstTime
-                        
-                        LineMark(
-                            x: .value("Time", time),
-                            y: .value("Error", point.resX ?? 0.0)
-                        )
-                        .foregroundStyle(by: .value("Axis", "X Res"))
-                        
-                        LineMark(
-                            x: .value("Time", time),
-                            y: .value("Error", point.resY ?? 0.0)
-                        )
-                        .foregroundStyle(by: .value("Axis", "Y Res"))
+            if chartModeIndex == 0 {
+                // 模式 1：IMU 输入与 ML 输出对比
+                Label("Data Compare: IMU Input vs ML Output", systemImage: "waveform.path.ecg")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                let accX = engine.debugState.correctedAcc.x
+                let accY = engine.debugState.correctedAcc.y
+                let mlSpeed = hypot(engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y)
+                
+                DebugRow(icon: "waveform.path", title: "IMU Accel X", value: String(format: "%.3f", accX))
+                    .foregroundColor(.green)
+                DebugRow(icon: "waveform.path", title: "IMU Accel Y", value: String(format: "%.3f", accY))
+                    .foregroundColor(.yellow)
+                DebugRow(icon: "speedometer", title: "ML Output Speed", value: String(format: "%.3f", mlSpeed))
+                    .foregroundColor(.purple)
+                
+                if !engine.chartPoints.isEmpty {
+                    Chart {
+                        let firstTime = engine.chartPoints.first?.timestamp ?? 0
+                        ForEach(engine.chartPoints) { point in
+                            let time = point.timestamp - firstTime
+                            
+                            LineMark(
+                                x: .value("Time", time),
+                                y: .value("Value", point.acceleration?.x ?? 0.0)
+                            )
+                            .foregroundStyle(by: .value("Metric", "Acc X"))
+                            
+                            LineMark(
+                                x: .value("Time", time),
+                                y: .value("Value", point.acceleration?.y ?? 0.0)
+                            )
+                            .foregroundStyle(by: .value("Metric", "Acc Y"))
+                            
+                            LineMark(
+                                x: .value("Time", time),
+                                y: .value("Value", point.speed)
+                            )
+                            .foregroundStyle(by: .value("Metric", "ML Speed"))
+                        }
                     }
+                    .chartForegroundStyleScale([
+                        "Acc X": .green,
+                        "Acc Y": .yellow,
+                        "ML Speed": .purple
+                    ])
+                    .chartXAxis(.hidden)
+                    .frame(height: 100)
                 }
-                .chartForegroundStyleScale([
-                    "X Res": .blue,
-                    "Y Res": .red
-                ])
-                .chartXAxis(.hidden)
-                .frame(height: 100)
+                
+            } else {
+                // 模式 2：NR 与 AR 输出对比（残差）
+                Label("Data Compare: NR vs AR Residuals", systemImage: "chart.xyaxis.line")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            
+                let xRes = engine.chartPoints.last?.resX ?? 0.0
+                let yRes = engine.chartPoints.last?.resY ?? 0.0
+                
+                DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m", xRes))
+                    .foregroundColor(.blue)
+                DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
+                    .foregroundColor(.red)
+                
+                if !engine.chartPoints.isEmpty {
+                    Chart {
+                        let firstTime = engine.chartPoints.first?.timestamp ?? 0
+                        ForEach(engine.chartPoints) { point in
+                            let time = point.timestamp - firstTime
+                            
+                            LineMark(
+                                x: .value("Time", time),
+                                y: .value("Error", point.resX ?? 0.0)
+                            )
+                            .foregroundStyle(by: .value("Axis", "X Res"))
+                            
+                            LineMark(
+                                x: .value("Time", time),
+                                y: .value("Error", point.resY ?? 0.0)
+                            )
+                            .foregroundStyle(by: .value("Axis", "Y Res"))
+                        }
+                    }
+                    .chartForegroundStyleScale([
+                        "X Res": .blue,
+                        "Y Res": .red
+                    ])
+                    .chartXAxis(.hidden)
+                    .frame(height: 100)
+                }
             }
             
             Text("Model Expects: [1, 6, 200] Float32/Double Array\n100Hz Hardware -> 200Hz Lerp Resampling")
