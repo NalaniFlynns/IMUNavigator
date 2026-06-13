@@ -55,6 +55,10 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     @Published var cumulativeError: Double = 0.0; @Published var currentResidual: Double = 0.0
     @Published var currentAccResidual: Double = 0.0
     
+    // --- 新增：X轴与Y轴的独立残差状态 ---
+    @Published var currentResX: Double = 0.0
+    @Published var currentResY: Double = 0.0
+    
     @Published var statusText: String = "Ready"; @Published var memorySizeText: String = "0 KB"
     
     @Published var activeEngine: String = "Initializing"
@@ -149,7 +153,12 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 self.isRecording = true; self.dbPoints.removeAll(); self.renderPoints.removeAll(); self.chartPoints.removeAll()
                 self.pureARPoints.removeAll(); self.pureBlindPoints.removeAll(); self.windowAR.removeAll(); self.windowBlind.removeAll()
                 self.recentErrors.removeAll(); self.recentResiduals.removeAll(); self.recentAccErrors.removeAll()
-                self.totalDistance = 0.0; self.cumulativeError = 0.0; self.currentResidual = 0.0; self.currentAccResidual = 0.0; self.actualDataBytes = 0
+                self.totalDistance = 0.0; self.cumulativeError = 0.0; self.currentResidual = 0.0; self.currentAccResidual = 0.0
+                
+                // --- 录制开始时重置 X/Y 轴残差 ---
+                self.currentResX = 0.0; self.currentResY = 0.0
+                
+                self.actualDataBytes = 0
                 self.globalPosition = simd_double3(0,0,0); self.currentVelocity = simd_double3(0,0,0); self.smoothedARVelocity = simd_double3(0,0,0); self.lastRawSlamVel = simd_double3(0,0,0)
                 self.currentAccBias = simd_double3(AppSettings.shared.manualBiasX, AppSettings.shared.manualBiasY, AppSettings.shared.manualBiasZ)
                 self.slamOffset = simd_double3(0,0,0); self.currentBlindPosWithoutOffset = simd_double3(0,0,0)
@@ -223,7 +232,13 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     self.recentAccErrors.removeAll(where: { nowTime - $0.0 > 1.0 })
                     let accResidual1s = self.recentAccErrors.map { $0.1 }.reduce(0, +) / Double(max(1, self.recentAccErrors.count))
                     
-                    DispatchQueue.main.async { self.currentResidual = length(deltaV); self.currentAccResidual = accResidual1s }
+                    // --- 同步提取 X 和 Y 轴方向的残差 ---
+                    DispatchQueue.main.async {
+                        self.currentResidual = length(deltaV)
+                        self.currentAccResidual = accResidual1s
+                        self.currentResX = deltaV.x
+                        self.currentResY = deltaV.y
+                    }
                     
                     if AppSettings.shared.enableDynamicCalibration {
                         let gain = 0.0005
@@ -465,7 +480,35 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         if let first = firstPoint { distStart = length(simd_double3(globalPosition.x - first.x, globalPosition.y - first.y, globalPosition.z - first.z)); bearingStart = atan2(globalPosition.y - first.y, globalPosition.x - first.x) * 180 / .pi }
         
         let settings = AppSettings.shared
-        let point = TrackingPoint(id: pointCounter, timestamp: Date().timeIntervalSince1970, source: source, x: globalPosition.x, y: globalPosition.y, z: globalPosition.z, speed: speedMag, heading: self.fusedHeading, stepDisplacement: stepDisp, headingChange: hdgChange, distanceFromStart: distStart, bearingFromStart: bearingStart, cumulativeError: currentCumErr, instantaneousError: err1s, residual: residual1s, accResidual: currentAccResidual, isZUPTActive: zuptActive, slamConfidence: slamConfidence, latitude: settings.recordGNSS ? currentGNSS?.coordinate.latitude : nil, longitude: settings.recordGNSS ? currentGNSS?.coordinate.longitude : nil, gnssAccuracy: settings.recordGNSS ? currentGNSS?.horizontalAccuracy : nil, gnssAltitude: settings.recordGNSS ? currentGNSS?.altitude : nil, barometerAltitude: settings.recordBarometer ? currentBaroAlt : nil, acceleration: settings.recordAcceleration ? accDevice : nil, rotationRate: settings.recordAcceleration ? gyroDevice : nil, bleDevices: bleScanner.currentDevices)
+        
+        let point = TrackingPoint(
+            id: pointCounter, 
+            timestamp: Date().timeIntervalSince1970, 
+            source: source, 
+            x: globalPosition.x, y: globalPosition.y, z: globalPosition.z, 
+            speed: speedMag, 
+            heading: self.fusedHeading, 
+            stepDisplacement: stepDisp, 
+            headingChange: hdgChange, 
+            distanceFromStart: distStart, 
+            bearingFromStart: bearingStart, 
+            cumulativeError: currentCumErr, 
+            instantaneousError: err1s, 
+            residual: residual1s, 
+            accResidual: currentAccResidual, 
+            isZUPTActive: zuptActive, 
+            slamConfidence: slamConfidence, 
+            resX: self.currentResX,    // <- 注入 X轴 残差
+            resY: self.currentResY,    // <- 注入 Y轴 残差
+            latitude: settings.recordGNSS ? currentGNSS?.coordinate.latitude : nil, 
+            longitude: settings.recordGNSS ? currentGNSS?.coordinate.longitude : nil, 
+            gnssAccuracy: settings.recordGNSS ? currentGNSS?.horizontalAccuracy : nil, 
+            gnssAltitude: settings.recordGNSS ? currentGNSS?.altitude : nil, 
+            barometerAltitude: settings.recordBarometer ? currentBaroAlt : nil, 
+            acceleration: settings.recordAcceleration ? accDevice : nil, 
+            rotationRate: settings.recordAcceleration ? gyroDevice : nil, 
+            bleDevices: bleScanner.currentDevices
+        )
         
         let navStateStr = zuptActive ? "ZUPT" : source.rawValue
         DispatchQueue.main.async { self.currentPoint = point; self.currentSpeed = speedMag; self.activeEngine = source.rawValue; self.navState = navStateStr; self.checkIntervalsAndSave(point: point) }
