@@ -481,6 +481,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         
         let settings = AppSettings.shared
         
+        // --- 核心修改：在实例化TrackingPoint时写入刚计算得到的 resX 和 resY ---
         let point = TrackingPoint(
             id: pointCounter, 
             timestamp: Date().timeIntervalSince1970, 
