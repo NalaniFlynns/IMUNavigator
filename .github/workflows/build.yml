@@ -10,7 +10,8 @@ env:
 
 jobs:
   build-ios:
-    runs-on: macos-latest 
+    # 恢复使用 macos-15，因为 macOS Sequoia 完美支持 Xcode 26 系列
+    runs-on: macos-15 
     permissions:
       contents: write
     steps:
@@ -18,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode Version
+        # 强制指定使用 Xcode 26 的路径
         run: sudo xcode-select -s /Applications/Xcode_26.app
 
       - name: Extract App Version
@@ -28,6 +30,7 @@ jobs:
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build Unsigned App
+        # 明确指定 IPHONEOS_DEPLOYMENT_TARGET=26.0，与 Xcode 26 的原生环境对齐
         run: |
           xcodebuild build \
             -project IMUNavigator.xcodeproj \
@@ -56,7 +59,7 @@ jobs:
             IMUNavigator Release
             Version: v${{ env.APP_VERSION }}
             Build: #${{ github.run_number }}
-            Environment: Xcode 27 (Swift 6.4) / Target: iOS 26.0
+            Environment: Xcode 26 (Swift 6.2) / Target: iOS 26.0
             Notice: Unsigned IPA for TrollStore or sideloading tools.
           draft: false
           prerelease: false
