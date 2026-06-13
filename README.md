@@ -9,7 +9,7 @@
 <a id="english-version"></a>
 ## English Version
 
-An advanced iOS sensor fusion engine integrating ARKit (VIO), Pedestrian Dead Reckoning (PDR), and RoNIN Neural Inertial Navigation. IMUNavigator provides a robust, real-time trajectory plotting and spatial alignment laboratory.
+An advanced iOS sensor fusion engine demo integrating ARKit (VIO), Pedestrian Dead Reckoning (PDR), and RoNIN Neural Inertial Navigation. IMUNavigator provides a robust, real-time trajectory plotting and spatial alignment laboratory.
 
 ### Core Features
 
@@ -52,7 +52,7 @@ This project is licensed under the MIT License.
 <a id="中文版"></a>
 ## 中文版
 
-一款先进的 iOS 传感器融合引擎，深度集成了 ARKit 视觉惯性里程计 (VIO)、行人航位推算 (PDR) 以及 RoNIN 神经网络惯性导航技术。IMUNavigator 提供了强大的实时轨迹绘制与空间对齐实验功能。
+一款先进的 iOS 传感器融合引擎demo，深度集成了 ARKit 视觉惯性里程计 (VIO)、行人航位推算 (PDR) 以及 RoNIN 神经网络惯性导航技术。IMUNavigator 提供了强大的实时轨迹绘制与空间对齐实验功能。
 
 ### 核心功能
 
