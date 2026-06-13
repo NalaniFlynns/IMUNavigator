@@ -9,6 +9,11 @@ extension View {
     }
 }
 
+class ImageCache {
+    static let shared = ImageCache()
+    var cache: [String: UIImage] = [:]
+}
+
 struct SettingsView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     
@@ -58,6 +63,8 @@ struct SettingsFormContent: View, Equatable {
     @State private var zuptAccStr: String = ""
     @State private var zuptGyroStr: String = ""
     
+    @State private var updateStatus: String = "Check for Updates"
+    
     let syncTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -82,7 +89,7 @@ struct SettingsFormContent: View, Equatable {
                     Button("Spatial Alignment Lab") { showAlignment = true }.foregroundColor(.orange)
                     
                     NavigationLink(destination: DebugPanelView().environmentObject(engine)) {
-                        HStack { Image(systemName: "terminal.fill"); Text("System Debug Console") }
+                        HStack { Image(systemName: "terminal"); Text("System Debug Console") }
                     }.foregroundColor(.purple)
                     
                     HStack { Text("Bias X"); Spacer(); TextField("X", text: $biasXStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).frame(width: 80).onChange(of: biasXStr) { newValue in if let d = Double(newValue) { AppSettings.shared.manualBiasX = d } } }
@@ -133,7 +140,7 @@ struct SettingsFormContent: View, Equatable {
                     if recordingModeIndex == 0 {
                         HStack { Label("Time Interval (s)", systemImage: "clock"); Spacer(); TextField("0 = No limit", text: $timeStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: timeStr) { newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalTime = d } } }
                     } else {
-                        HStack { Label("Space Interval (m)", systemImage: "ruler.fill"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalSpace = d } } }
+                        HStack { Label("Space Interval (m)", systemImage: "ruler"); Spacer(); TextField("0 = No limit", text: $spaceStr).keyboardType(.decimalPad).multilineTextAlignment(.trailing).focused($isInputActive).onChange(of: spaceStr) { newValue in if let d = Double(newValue) { AppSettings.shared.recordIntervalSpace = d } } }
                     }
                 }
                 
@@ -206,7 +213,7 @@ struct SettingsFormContent: View, Equatable {
                 Section(header: Text("About & Support")) {
                     VStack(spacing: 12) {
                         HStack(spacing: 15) {
-                            Image(systemName: "safari.fill")
+                            Image(systemName: "safari")
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 32, height: 32)
@@ -246,7 +253,7 @@ struct SettingsFormContent: View, Equatable {
                         
                         Link(destination: URL(string: "https://github.com/nalaniflynns/imunavigator/issues")!) {
                             HStack {
-                                Image(systemName: "ladybug.fill")
+                                Image(systemName: "ladybug")
                                     .frame(width: 24)
                                 Text("Submit Feedback")
                                 Spacer()
@@ -268,6 +275,23 @@ struct SettingsFormContent: View, Equatable {
                             }
                         }
                         .padding(.vertical, 4)
+                        
+                        Button(action: {
+                            checkForUpdates(manual: true)
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .frame(width: 24)
+                                    .foregroundColor(.gray)
+                                Text(updateStatus)
+                                Spacer()
+                            }
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.vertical, 4)
+                        .onAppear {
+                            checkForUpdates(manual: false)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -308,20 +332,50 @@ struct SettingsFormContent: View, Equatable {
             }
         }
     }
+    
+    private func checkForUpdates(manual: Bool = false, retryCount: Int = 3) {
+        if manual { updateStatus = "Checking..." }
+        let url = URL(string: "https://api.github.com/repos/NalaniFlynns/IMUNavigator/releases/latest")!
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let tagName = json["tag_name"] as? String {
+                DispatchQueue.main.async {
+                    let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+                    if tagName.contains(currentVersion) || currentVersion.contains(tagName) {
+                        if manual { self.updateStatus = "Up to date" }
+                    } else {
+                        self.updateStatus = "New version available: \(tagName)"
+                    }
+                }
+            } else {
+                if retryCount > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        self.checkForUpdates(manual: manual, retryCount: retryCount - 1)
+                    }
+                } else {
+                    if manual {
+                        DispatchQueue.main.async { self.updateStatus = "Check failed, tap to retry" }
+                    }
+                }
+            }
+        }.resume()
+    }
 }
 
 // --- 赞赏页面 ---
 struct SponsorView: View {
     @State private var showCopyToast = false
+    @State private var sponsorImage: UIImage? = nil
     
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "cup.and.saucer.fill")
-                .font(.system(size: 60))
+            Image(systemName: "chevron.left.forward.slash")
+                .font(.system(size: 60, weight: .light))
                 .foregroundColor(.orange)
                 .padding(.top, 40)
             
-            Text("💖 感谢您的支持！")
+            Text("感谢您的支持！")
                 .font(.title2)
                 .bold()
             
@@ -331,29 +385,35 @@ struct SponsorView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 30)
             
-            Image("SponsorCode")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 250)
-                .cornerRadius(12)
-                .shadow(radius: 5)
-                .padding(.vertical, 10)
-                .contextMenu {
-                    Button {
-                        if let image = UIImage(named: "SponsorCode") {
-                            UIPasteboard.general.image = image
-                            showCopyToast = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                showCopyToast = false
-                            }
-                        }
-                    } label: {
-                        Label("复制赞赏码", systemImage: "doc.on.doc")
-                    }
+            Group {
+                if let image = sponsorImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    ProgressView("Loading...")
                 }
+            }
+            .frame(maxWidth: 250, minHeight: 250)
+            .cornerRadius(12)
+            .shadow(radius: 5)
+            .padding(.vertical, 10)
+            .contextMenu {
+                Button {
+                    if let image = sponsorImage {
+                        UIPasteboard.general.image = image
+                        showCopyToast = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            showCopyToast = false
+                        }
+                    }
+                } label: {
+                    Label("复制赞赏码", systemImage: "doc.on.doc")
+                }
+            }
             
             if showCopyToast {
-                Text("✅ 赞赏码已复制到剪贴板")
+                Text("赞赏码已复制到剪贴板")
                     .font(.caption)
                     .foregroundColor(.green)
                     .transition(.opacity)
@@ -368,6 +428,32 @@ struct SponsorView: View {
         .navigationTitle("Buy me a coffee")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.easeInOut, value: showCopyToast)
+        .onAppear {
+            loadSponsorImage()
+        }
+    }
+    
+    private func loadSponsorImage(retryCount: Int = 3) {
+        if let cached = ImageCache.shared.cache["sponsor"] {
+            self.sponsorImage = cached
+            return
+        }
+        
+        let urlStr = "https://raw.githubusercontent.com/NalaniFlynns/IMUNavigator/main/IMUNavigator/Assets.xcassets/SponsorCode.imageset/sponsor.jpg"
+        guard let url = URL(string: urlStr) else { return }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let data = data, let image = UIImage(data: data) {
+                DispatchQueue.main.async {
+                    ImageCache.shared.cache["sponsor"] = image
+                    self.sponsorImage = image
+                }
+            } else if retryCount > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self.loadSponsorImage(retryCount: retryCount - 1)
+                }
+            }
+        }.resume()
     }
 }
 
@@ -510,7 +596,7 @@ struct MLInfoTabView: View {
         VStack(alignment: .leading, spacing: 15) {
             DebugRow(icon: "cpu", title: "NR Mode Status", value: engine.debugState.mlStatus)
             DebugRow(icon: "move.3d", title: "NR Predicted Vel", value: String(format: "(%.3f, %.3f) m/s", engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y))
-            DebugRow(icon: "bolt.badge.clock.fill", title: "NR Processing FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
+            DebugRow(icon: "bolt.badge.clock", title: "NR Processing FPS", value: String(format: "%.1f Hz", engine.debugState.mlFPS)).foregroundColor(.orange)
             
             Divider()
             
@@ -702,10 +788,11 @@ struct MLInfoTabView: View {
 // --- 日志查看页面 ---
 struct AppLogsTabView: View {
     @ObservedObject var logger = AppLogger.shared
-    @State private var selectedLevel: LogLevel = .debug
+    @State private var selectedLevelIndex: Int = 0
+    let levels: [LogLevel] = [.debug, .info, .warning, .error]
     
     var filteredLogs: [LogEntry] {
-        logger.logs.filter { $0.level >= selectedLevel }
+        logger.logs.filter { $0.level >= levels[selectedLevelIndex] }
     }
     
     var body: some View {
@@ -714,12 +801,12 @@ struct AppLogsTabView: View {
                 Text("Level Filter:")
                     .font(.caption)
                     .foregroundColor(.gray)
-                Picker("Level", selection: $selectedLevel) {
-                    ForEach(LogLevel.allCases, id: \.self) { level in
-                        Text(level.rawValue).tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
+                
+                UIKitSegmentedPicker(
+                    selection: $selectedLevelIndex,
+                    items: levels.map { $0.rawValue }
+                )
+                .frame(height: 32)
             }
             .padding(.bottom, 4)
             
@@ -727,8 +814,8 @@ struct AppLogsTabView: View {
                 Text(log.formattedString)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(log.level.color)
-                    .textSelection(.enabled) // 支持手动框选复制
-                    .contextMenu { // 支持长按整行复制
+                    .textSelection(.enabled) 
+                    .contextMenu { 
                         Button {
                             UIPasteboard.general.string = log.formattedString
                         } label: {
