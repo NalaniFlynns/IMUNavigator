@@ -55,6 +55,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     @Published var cumulativeError: Double = 0.0; @Published var currentResidual: Double = 0.0
     @Published var currentAccResidual: Double = 0.0
     
+    // --- 新增：X轴与Y轴的独立残差状态 ---
     @Published var currentResX: Double = 0.0
     @Published var currentResY: Double = 0.0
     
@@ -154,6 +155,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 self.recentErrors.removeAll(); self.recentResiduals.removeAll(); self.recentAccErrors.removeAll()
                 self.totalDistance = 0.0; self.cumulativeError = 0.0; self.currentResidual = 0.0; self.currentAccResidual = 0.0
                 
+                // --- 录制开始时重置 X/Y 轴残差 ---
                 self.currentResX = 0.0; self.currentResY = 0.0
                 
                 self.actualDataBytes = 0
@@ -214,24 +216,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 
                 if self.wasImuOnly { self.slamOffset = self.globalPosition - rawSlamPos; self.wasImuOnly = false; self.lastAlignedSlamPos = rawSlamPos + self.slamOffset; self.lastSlamTimestamp = frame.timestamp; AppLogger.shared.log("VIO Resumed & Offset Aligned."); return }
                 
-                var alignedSlamPos = rawSlamPos + self.slamOffset
-                let dtSlam = self.lastSlamTimestamp > 0 ? (frame.timestamp - self.lastSlamTimestamp) : 0.016
-                
+                let alignedSlamPos = rawSlamPos + self.slamOffset; let dtSlam = self.lastSlamTimestamp > 0 ? (frame.timestamp - self.lastSlamTimestamp) : 0.016
                 if dtSlam > 0 {
-                    let jumpDist = length(alignedSlamPos - self.lastAlignedSlamPos)
-                    let instVel = jumpDist / dtSlam
-                    
-                    if jumpDist > 0.2 && instVel > 10.0 {
-                        if !AppSettings.shared.enableSLAMCorrection {
-                            let expectedPos = self.lastAlignedSlamPos + self.smoothedARVelocity * dtSlam
-                            self.slamOffset = expectedPos - rawSlamPos
-                            alignedSlamPos = expectedPos
-                            AppLogger.shared.log("SLAM Jump Intercepted. Offset dynamically adjusted.")
-                        } else {
-                            AppLogger.shared.log("SLAM Relocalization (Jump) Applied: \(String(format: "%.2f", jumpDist))m")
-                        }
-                    }
-                    
                     let rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
                     self.smoothedARVelocity = 0.8 * self.smoothedARVelocity + 0.2 * rawSlamVel
                     let deltaV = self.smoothedARVelocity - self.currentVelocity
@@ -246,6 +232,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     self.recentAccErrors.removeAll(where: { nowTime - $0.0 > 1.0 })
                     let accResidual1s = self.recentAccErrors.map { $0.1 }.reduce(0, +) / Double(max(1, self.recentAccErrors.count))
                     
+                    // --- 同步提取 X 和 Y 轴方向的残差 ---
                     DispatchQueue.main.async {
                         self.currentResidual = length(deltaV)
                         self.currentAccResidual = accResidual1s
@@ -261,12 +248,15 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                         DispatchQueue.main.async { AppSettings.shared.manualBiasX = newBiasX; AppSettings.shared.manualBiasY = newBiasY; AppSettings.shared.manualBiasZ = newBiasZ }
                     }
                     
-                    self.globalPosition = alignedSlamPos
-                    self.currentVelocity = self.smoothedARVelocity
-                    self.lastAlignedSlamPos = alignedSlamPos
-                    self.lastSlamTimestamp = frame.timestamp
+                    if AppSettings.shared.enableSLAMCorrection {
+                        self.globalPosition = alignedSlamPos
+                        self.currentVelocity = self.smoothedARVelocity
+                    }
                     
-                    self.evaluateAndSave(source: .arkitVIO, dt: dtSlam, accDevice: self.lastDeviceAcc, gyroDevice: self.lastDeviceGyro)
+                    self.lastAlignedSlamPos = alignedSlamPos; self.lastSlamTimestamp = frame.timestamp
+                    if AppSettings.shared.enableSLAMCorrection {
+                        self.evaluateAndSave(source: .arkitVIO, dt: dtSlam, accDevice: self.lastDeviceAcc, gyroDevice: self.lastDeviceGyro)
+                    }
                 }
             } else { self.wasImuOnly = true }
         }
@@ -343,7 +333,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             DispatchQueue.main.async { self.motionStateStr = actStr; self.sensorStatus = (magWeight < 0.01) ? "Gyro Trusted (Mag Interfere)" : "Gyro/Mag Fused" }
             
             guard self.isRecording else { return }
-            if AppSettings.shared.coreNavMode == .fusion && self.slamIsValid && !self.isInBackground { self.currentPedometerDelta = 0; return }
+            if AppSettings.shared.coreNavMode == .fusion && self.slamIsValid && !self.isInBackground && AppSettings.shared.enableSLAMCorrection { self.currentPedometerDelta = 0; return }
             
             self.wasImuOnly = true; var actEngine: TrackingSource = .imuFallback
             var dx_raw = 0.0; var dy_raw = 0.0; var vx_raw = 0.0; var vy_raw = 0.0
@@ -436,7 +426,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             self.currentVelocity = simd_double3(mappedVx, mappedVy, v_z)
             
             let arSpeed = length(simd_double2(self.smoothedARVelocity.x, self.smoothedARVelocity.y))
-            let nrSpeed = length(simd_double2(vx_raw, vy_raw)) 
+            let nrSpeed = length(simd_double2(vx_raw, vy_raw)) // Unmapped NR Velocity
             
             if AppSettings.shared.enableAutoAlignment && arSpeed > 0.4 && nrSpeed > 0.4 {
                 let arAng = atan2(self.smoothedARVelocity.y, self.smoothedARVelocity.x)
@@ -508,8 +498,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             accResidual: currentAccResidual, 
             isZUPTActive: zuptActive, 
             slamConfidence: slamConfidence, 
-            resX: self.currentResX,    
-            resY: self.currentResY,    
+            resX: self.currentResX,    // <- 注入 X轴 残差
+            resY: self.currentResY,    // <- 注入 Y轴 残差
             latitude: settings.recordGNSS ? currentGNSS?.coordinate.latitude : nil, 
             longitude: settings.recordGNSS ? currentGNSS?.coordinate.longitude : nil, 
             gnssAccuracy: settings.recordGNSS ? currentGNSS?.horizontalAccuracy : nil, 
