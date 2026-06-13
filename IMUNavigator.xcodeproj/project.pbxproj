@@ -410,6 +410,7 @@
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要持续获取GNSS信息";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要获取GNSS定位";
 				INFOPLIST_KEY_NSMotionUsageDescription = "需要使用IMU进行后台惯性导航";
+                INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "我们需要您的允许才能将赞赏码保存到系统相册，此举将不会读取您的相册内容。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -456,6 +457,7 @@
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要持续获取GNSS信息";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要获取GNSS定位";
 				INFOPLIST_KEY_NSMotionUsageDescription = "需要使用IMU进行后台惯性导航";
+                INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "我们需要您的允许才能将赞赏码保存到系统相册，此举将不会读取您的相册内容。";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
