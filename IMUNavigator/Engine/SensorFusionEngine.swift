@@ -55,7 +55,6 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     @Published var cumulativeError: Double = 0.0; @Published var currentResidual: Double = 0.0
     @Published var currentAccResidual: Double = 0.0
     
-    // --- 新增：X轴与Y轴的独立残差状态 ---
     @Published var currentResX: Double = 0.0
     @Published var currentResY: Double = 0.0
     
@@ -131,8 +130,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
         arSession.delegate = self; locationManager.delegate = self
         locationManager.requestAlwaysAuthorization(); locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.allowsBackgroundLocationUpdates = true; locationManager.pausesLocationUpdatesAutomatically = false
-        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         
         AppLogger.shared.log("System Initialized.")
         if motionManager.isDeviceMotionAvailable {
@@ -155,7 +154,6 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 self.recentErrors.removeAll(); self.recentResiduals.removeAll(); self.recentAccErrors.removeAll()
                 self.totalDistance = 0.0; self.cumulativeError = 0.0; self.currentResidual = 0.0; self.currentAccResidual = 0.0
                 
-                // --- 录制开始时重置 X/Y 轴残差 ---
                 self.currentResX = 0.0; self.currentResY = 0.0
                 
                 self.actualDataBytes = 0
@@ -182,9 +180,10 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     
     func stopRecording() {
         UIApplication.shared.isIdleTimerDisabled = false
+        self.arSession.pause()
         engineQueue.async { [weak self] in guard let self = self else { return }
             AppLogger.shared.log("Session Stopped.")
-            self.arSession.pause(); self.locationManager.stopUpdatingLocation(); self.locationManager.stopUpdatingHeading(); self.altimeter.stopRelativeAltitudeUpdates(); self.bleScanner.stopScanning()
+            self.locationManager.stopUpdatingLocation(); self.locationManager.stopUpdatingHeading(); self.altimeter.stopRelativeAltitudeUpdates(); self.bleScanner.stopScanning()
             self.activityManager.stopActivityUpdates(); self.pedometer.stopUpdates()
             self.saveSessionData(); self.stopLiveActivity()
             DispatchQueue.main.async { self.isRecording = false; self.statusText = "Stopped"; self.activeEngine = "Stopped"; self.navState = "Stopped" }
@@ -195,8 +194,25 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
     
     func triggerManualCalibration(completion: @escaping () -> Void) { engineQueue.async { AppLogger.shared.log("Calibration Started..."); self.tempAccBiasSum = simd_double3(0,0,0); self.calibrationSamples = 0; self.calibrationStartTime = 0; DispatchQueue.main.async { self.calibrationCompletionBlock = completion; self.isCalibrating = true; self.calibrationProgress = 0.0 } } }
     
-    @objc private func appDidEnterBackground() { if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }; isInBackground = true; arSession.pause(); AppLogger.shared.log("Entered Background"); DispatchQueue.main.async { self.statusText = "Background" } }
-    @objc private func appWillEnterForeground() { if !isRecording { return }; isInBackground = false; AppLogger.shared.log("Entered Foreground"); if AppSettings.shared.coreNavMode == .fusion { let config = ARWorldTrackingConfiguration(); config.worldAlignment = .gravityAndHeading; arSession.run(config, options: []) }; DispatchQueue.main.async { self.statusText = "Active" } }
+    @objc private func appWillResignActive() {
+        arSession.pause()
+        isInBackground = true
+        if !AppSettings.shared.enableBackgroundRecording { stopRecording(); return }
+        AppLogger.shared.log("Entered Background")
+        DispatchQueue.main.async { self.statusText = "Background" } 
+    }
+    
+    @objc private func appDidBecomeActive() { 
+        if !isRecording { return }
+        isInBackground = false
+        AppLogger.shared.log("Entered Foreground")
+        if AppSettings.shared.coreNavMode == .fusion { 
+            let config = ARWorldTrackingConfiguration()
+            config.worldAlignment = .gravityAndHeading
+            arSession.run(config, options: []) 
+        }
+        DispatchQueue.main.async { self.statusText = "Active" } 
+    }
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isRecording, !isInBackground, AppSettings.shared.coreNavMode == .fusion else { return }
@@ -227,18 +243,13 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 if dtSlam > 0 {
                     var rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
                     
-                    // --- 核心修改：跳变检测与连续积分过滤逻辑 ---
-                    // 当 ARKit 发生重新定位或闭环纠正时，会产生极大的瞬间速度/加速度
                     let acceleration = length(rawSlamVel - self.lastRawSlamVel) / dtSlam
                     let isJump = acceleration > 25.0 || length(rawSlamVel) > 15.0
                     
                     if !AppSettings.shared.enableSLAMCorrection && isJump {
-                        // 若禁用了跳变纠正：
-                        // 我们将发生的跳变通过反向调整 slamOffset 给吸收掉，让当前帧平滑延续上一帧的积分轨迹
                         let expectedPos = self.lastAlignedSlamPos + self.smoothedARVelocity * dtSlam
                         self.slamOffset = expectedPos - rawSlamPos
                         
-                        // 重新计算平滑后的绝对位置和速度
                         alignedSlamPos = rawSlamPos + self.slamOffset
                         rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
                     }
@@ -271,14 +282,12 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                         DispatchQueue.main.async { AppSettings.shared.manualBiasX = newBiasX; AppSettings.shared.manualBiasY = newBiasY; AppSettings.shared.manualBiasZ = newBiasZ }
                     }
                     
-                    // --- 核心修改：无条件使用 ARKit 计算出的(纠正过或平滑过)位置作为全局坐标 ---
                     self.globalPosition = alignedSlamPos
                     self.currentVelocity = self.smoothedARVelocity
                     
                     self.lastAlignedSlamPos = alignedSlamPos
                     self.lastSlamTimestamp = frame.timestamp
                     
-                    // 无论是否启用了纠正，只要获取到了 SLAM 帧系数据，就不阻碍利用 ARKit 的轨迹记录
                     self.evaluateAndSave(source: .arkitVIO, dt: dtSlam, accDevice: self.lastDeviceAcc, gyroDevice: self.lastDeviceGyro)
                 }
             } else { self.wasImuOnly = true }
@@ -357,8 +366,6 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             
             guard self.isRecording else { return }
             
-            // --- 核心修改：解除禁用纠正时对 SLAM 拦截逻辑的影响 ---
-            // 只要是在 Fusion 模式且 SLAM 可用，完全屏蔽 IMU 的 PDR 自身坐标积分，专注于 SLAM 的积分系统
             if AppSettings.shared.coreNavMode == .fusion && self.slamIsValid && !self.isInBackground { 
                 self.currentPedometerDelta = 0 
                 return 
@@ -454,7 +461,7 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             self.currentVelocity = simd_double3(mappedVx, mappedVy, v_z)
             
             let arSpeed = length(simd_double2(self.smoothedARVelocity.x, self.smoothedARVelocity.y))
-            let nrSpeed = length(simd_double2(vx_raw, vy_raw)) // Unmapped NR Velocity
+            let nrSpeed = length(simd_double2(vx_raw, vy_raw))
             
             if AppSettings.shared.enableAutoAlignment && arSpeed > 0.4 && nrSpeed > 0.4 {
                 let arAng = atan2(self.smoothedARVelocity.y, self.smoothedARVelocity.x)
@@ -526,8 +533,8 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             accResidual: currentAccResidual, 
             isZUPTActive: zuptActive, 
             slamConfidence: slamConfidence, 
-            resX: self.currentResX,    // <- 注入 X轴 残差
-            resY: self.currentResY,    // <- 注入 Y轴 残差
+            resX: self.currentResX,
+            resY: self.currentResY,
             latitude: settings.recordGNSS ? currentGNSS?.coordinate.latitude : nil, 
             longitude: settings.recordGNSS ? currentGNSS?.coordinate.longitude : nil, 
             gnssAccuracy: settings.recordGNSS ? currentGNSS?.horizontalAccuracy : nil, 
