@@ -18,27 +18,46 @@ class RoNINModelWrapper {
     private var buffer: [MLBufferData] = []
     private let mlQueue = DispatchQueue(label: "com.imu.mlqueue", qos: .userInitiated)
     
+    private var isBackgroundMode: Bool = false
+    private var modelURL: URL?
+    
     init() {
+        self.modelURL = Bundle.main.url(forResource: "RoNIN_Navigation", withExtension: "mlmodelc")
+        // 初始启动时使用前台模式 (GPU/ANE)
+        loadModel(cpuOnly: false)
+    }
+    
+    func switchToBackgroundMode(_ isBackground: Bool) {
+        mlQueue.async {
+            guard self.isBackgroundMode != isBackground else { return }
+            self.isBackgroundMode = isBackground
+            self.loadModel(cpuOnly: isBackground)
+            let modeStr = isBackground ? "CPU Only (Background Lock)" : "ALL (Foreground ANE/GPU)"
+            AppLogger.shared.log("ML Compute Units Switched to: \(modeStr)", level: .info)
+        }
+    }
+    
+    private func loadModel(cpuOnly: Bool) {
         do {
             let config = MLModelConfiguration()
-            config.computeUnits = .all
-            if let modelURL = Bundle.main.url(forResource: "RoNIN_Navigation", withExtension: "mlmodelc") {
-                self.model = try MLModel(contentsOf: modelURL, configuration: config)
+            config.computeUnits = cpuOnly ? .cpuOnly : .all
+            
+            if let url = self.modelURL {
+                self.model = try MLModel(contentsOf: url, configuration: config)
                 if let modelDesc = self.model?.modelDescription {
                     self.inputFeatureName = modelDesc.inputDescriptionsByName.keys.first ?? "input"
                     self.outputFeatureName = modelDesc.outputDescriptionsByName.keys.first ?? "output"
                     
-                    // 🌟 核心修复：动态探测模型需要的实际数据类型 (Float32 / Double)
                     if let inputConstraint = modelDesc.inputDescriptionsByName[self.inputFeatureName]?.multiArrayConstraint {
                         self.expectedDataType = inputConstraint.dataType
                     }
-                    AppLogger.shared.log("ML Model Loaded. Input: \(inputFeatureName) (\(self.expectedDataType == .float32 ? "Float32" : "Double")), Output: \(outputFeatureName)")
+                    AppLogger.shared.log("ML Model Loaded (CPU Only: \(cpuOnly)). Input: \(inputFeatureName) (\(self.expectedDataType == .float32 ? "Float32" : "Double"))")
                 }
             } else {
-                AppLogger.shared.log("ERROR: RoNIN_Navigation.mlmodelc not found!")
+                AppLogger.shared.log("ERROR: RoNIN_Navigation.mlmodelc not found!", level: .error)
             }
         } catch {
-            AppLogger.shared.log("ML Model Load Failed: \(error.localizedDescription)")
+            AppLogger.shared.log("ML Model Load Failed: \(error.localizedDescription)", level: .error)
         }
     }
     
@@ -62,7 +81,6 @@ class RoNINModelWrapper {
                 completion(nil, "Data shortage (\(validData.count)/200)"); return
             }
             
-            // 🌟 核心修复：使用模型真正要求的 dataType 初始化，防止 prediction 静默崩溃！
             guard let inputArray = try? MLMultiArray(shape: [1, 6, 200], dataType: self.expectedDataType) else {
                 completion(nil, "Array init failed"); return
             }
@@ -74,7 +92,6 @@ class RoNINModelWrapper {
                     let left = validData[lIdx]; let right = validData[rIdx]
                     let weight = (right.timestamp == left.timestamp) ? 0 : (tTarget - left.timestamp) / (right.timestamp - left.timestamp)
                     
-                    // NSNumber 会自动桥接到 MLMultiArray 的底层 DataType
                     inputArray[[0, 0, i] as [NSNumber]] = NSNumber(value: left.acc.x + (right.acc.x - left.acc.x) * weight)
                     inputArray[[0, 1, i] as [NSNumber]] = NSNumber(value: left.acc.y + (right.acc.y - left.acc.y) * weight)
                     inputArray[[0, 2, i] as [NSNumber]] = NSNumber(value: left.acc.z + (right.acc.z - left.acc.z) * weight)
@@ -99,7 +116,6 @@ class RoNINModelWrapper {
                     completion(nil, "Output parse failed"); return
                 }
                 
-                // 绝对安全的扁平化提取（无视它是 [1, 2] 还是 [2] 的 Shape）
                 let vx = outputArray[0].doubleValue
                 let vy = outputArray[1].doubleValue
                 
@@ -108,8 +124,8 @@ class RoNINModelWrapper {
                 }
                 completion(simd_double2(vx, vy), "Success: (\(String(format:"%.2f", vx)), \(String(format:"%.2f", vy)))")
             } catch {
-                AppLogger.shared.log("ML Error: \(error.localizedDescription)")
-                completion(nil, "Predict Error")
+                AppLogger.shared.log("ML Error: \(error.localizedDescription)", level: .warning)
+                completion(nil, "Predict Error (Fallback Triggered)")
             }
         }
     }
