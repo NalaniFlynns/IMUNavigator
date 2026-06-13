@@ -438,7 +438,7 @@ struct SponsorView: View {
             }
             
             if showSaveToast {
-                Text(l("✅ QR Code saved to album", "✅ 赞赏码已保存到相册"))
+                Text(l("✔ QR Code saved to album", "✔ 赞赏码已保存到相册"))
                     .font(.caption)
                     .foregroundColor(.green)
                     .transition(.opacity)
