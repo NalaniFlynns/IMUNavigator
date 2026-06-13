@@ -214,11 +214,35 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                 self.alignWindowAR.append((nowTime, rawSlamPos))
                 self.alignWindowAR.removeAll(where: { nowTime - $0.0 > 5.0 })
                 
-                if self.wasImuOnly { self.slamOffset = self.globalPosition - rawSlamPos; self.wasImuOnly = false; self.lastAlignedSlamPos = rawSlamPos + self.slamOffset; self.lastSlamTimestamp = frame.timestamp; AppLogger.shared.log("VIO Resumed & Offset Aligned."); return }
+                if self.wasImuOnly { 
+                    self.slamOffset = self.globalPosition - rawSlamPos; self.wasImuOnly = false; 
+                    self.lastAlignedSlamPos = rawSlamPos + self.slamOffset; self.lastSlamTimestamp = frame.timestamp; 
+                    AppLogger.shared.log("VIO Resumed & Offset Aligned.")
+                    return 
+                }
                 
-                let alignedSlamPos = rawSlamPos + self.slamOffset; let dtSlam = self.lastSlamTimestamp > 0 ? (frame.timestamp - self.lastSlamTimestamp) : 0.016
+                var alignedSlamPos = rawSlamPos + self.slamOffset
+                let dtSlam = self.lastSlamTimestamp > 0 ? (frame.timestamp - self.lastSlamTimestamp) : 0.016
+                
                 if dtSlam > 0 {
-                    let rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
+                    var rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
+                    
+                    // --- 核心修改：跳变检测与连续积分过滤逻辑 ---
+                    // 当 ARKit 发生重新定位或闭环纠正时，会产生极大的瞬间速度/加速度
+                    let acceleration = length(rawSlamVel - self.lastRawSlamVel) / dtSlam
+                    let isJump = acceleration > 25.0 || length(rawSlamVel) > 15.0
+                    
+                    if !AppSettings.shared.enableSLAMCorrection && isJump {
+                        // 若禁用了跳变纠正：
+                        // 我们将发生的跳变通过反向调整 slamOffset 给吸收掉，让当前帧平滑延续上一帧的积分轨迹
+                        let expectedPos = self.lastAlignedSlamPos + self.smoothedARVelocity * dtSlam
+                        self.slamOffset = expectedPos - rawSlamPos
+                        
+                        // 重新计算平滑后的绝对位置和速度
+                        alignedSlamPos = rawSlamPos + self.slamOffset
+                        rawSlamVel = (alignedSlamPos - self.lastAlignedSlamPos) / dtSlam
+                    }
+                    
                     self.smoothedARVelocity = 0.8 * self.smoothedARVelocity + 0.2 * rawSlamVel
                     let deltaV = self.smoothedARVelocity - self.currentVelocity
                     
@@ -232,7 +256,6 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     self.recentAccErrors.removeAll(where: { nowTime - $0.0 > 1.0 })
                     let accResidual1s = self.recentAccErrors.map { $0.1 }.reduce(0, +) / Double(max(1, self.recentAccErrors.count))
                     
-                    // --- 同步提取 X 和 Y 轴方向的残差 ---
                     DispatchQueue.main.async {
                         self.currentResidual = length(deltaV)
                         self.currentAccResidual = accResidual1s
@@ -248,15 +271,15 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                         DispatchQueue.main.async { AppSettings.shared.manualBiasX = newBiasX; AppSettings.shared.manualBiasY = newBiasY; AppSettings.shared.manualBiasZ = newBiasZ }
                     }
                     
-                    if AppSettings.shared.enableSLAMCorrection {
-                        self.globalPosition = alignedSlamPos
-                        self.currentVelocity = self.smoothedARVelocity
-                    }
+                    // --- 核心修改：无条件使用 ARKit 计算出的(纠正过或平滑过)位置作为全局坐标 ---
+                    self.globalPosition = alignedSlamPos
+                    self.currentVelocity = self.smoothedARVelocity
                     
-                    self.lastAlignedSlamPos = alignedSlamPos; self.lastSlamTimestamp = frame.timestamp
-                    if AppSettings.shared.enableSLAMCorrection {
-                        self.evaluateAndSave(source: .arkitVIO, dt: dtSlam, accDevice: self.lastDeviceAcc, gyroDevice: self.lastDeviceGyro)
-                    }
+                    self.lastAlignedSlamPos = alignedSlamPos
+                    self.lastSlamTimestamp = frame.timestamp
+                    
+                    // 无论是否启用了纠正，只要获取到了 SLAM 帧系数据，就不阻碍利用 ARKit 的轨迹记录
+                    self.evaluateAndSave(source: .arkitVIO, dt: dtSlam, accDevice: self.lastDeviceAcc, gyroDevice: self.lastDeviceGyro)
                 }
             } else { self.wasImuOnly = true }
         }
@@ -333,7 +356,13 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
             DispatchQueue.main.async { self.motionStateStr = actStr; self.sensorStatus = (magWeight < 0.01) ? "Gyro Trusted (Mag Interfere)" : "Gyro/Mag Fused" }
             
             guard self.isRecording else { return }
-            if AppSettings.shared.coreNavMode == .fusion && self.slamIsValid && !self.isInBackground && AppSettings.shared.enableSLAMCorrection { self.currentPedometerDelta = 0; return }
+            
+            // --- 核心修改：解除禁用纠正时对 SLAM 拦截逻辑的影响 ---
+            // 只要是在 Fusion 模式且 SLAM 可用，完全屏蔽 IMU 的 PDR 自身坐标积分，专注于 SLAM 的积分系统
+            if AppSettings.shared.coreNavMode == .fusion && self.slamIsValid && !self.isInBackground { 
+                self.currentPedometerDelta = 0 
+                return 
+            }
             
             self.wasImuOnly = true; var actEngine: TrackingSource = .imuFallback
             var dx_raw = 0.0; var dy_raw = 0.0; var vx_raw = 0.0; var vy_raw = 0.0
@@ -396,7 +425,6 @@ class SensorFusionEngine: NSObject, ObservableObject, ARSessionDelegate, CLLocat
                     }
                 }
                 if let mlVel = self.latestMLVelocity {
-
                     let vx_global = mlVel.x * cos(-trueYawRad) + mlVel.y * sin(-trueYawRad)
                     let vy_global = -mlVel.x * sin(-trueYawRad) + mlVel.y * cos(-trueYawRad)
                     
