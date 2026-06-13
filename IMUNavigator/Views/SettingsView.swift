@@ -368,8 +368,12 @@ struct SensorsTabView: View {
 struct MLInfoTabView: View {
     @EnvironmentObject var engine: SensorFusionEngine
     @State private var tick = 0
-    // 0: IMU vs ML 对比, 1: NR vs AR 残差对比
-    @State private var chartModeIndex: Int = 1 
+    
+    // --- 图表功能状态 ---
+    @State private var chartModeIndex: Int = 1 // 0: IMU vs ML 对比, 1: NR vs AR 残差对比
+    @State private var timeRangeMode: Int = 1 // 0: 全局Global, 1: 时间窗口Window
+    @State private var timeWindowDuration: Double = 30.0 // 时间窗口长度 (1秒 ~ 300秒)
+    @State private var chartScaleLevel: Int = 1 // 比例尺精度: 0: Coarse, 1: Normal, 2: Fine
     
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     
@@ -381,34 +385,81 @@ struct MLInfoTabView: View {
             
             Divider()
             
-            // 使用与顶部同源的 UIKitSegmentedPicker 作为切换滑块
-            UIKitSegmentedPicker(selection: $chartModeIndex, items: ["IMU vs ML", "NR vs AR"])
-                .frame(height: 32)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 5)
+            // --- 控制面板 ---
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Chart Configuration").font(.headline).foregroundColor(.primary)
+                
+                UIKitSegmentedPicker(selection: $chartModeIndex, items: ["IMU vs ML", "NR vs AR"])
+                    .frame(height: 32)
+                
+                UIKitSegmentedPicker(selection: $timeRangeMode, items: ["Global History", "Time Window"])
+                    .frame(height: 32)
+                
+                if timeRangeMode == 1 {
+                    HStack {
+                        Text("Window: \(Int(timeWindowDuration))s").font(.subheadline).frame(width: 90, alignment: .leading)
+                        UIKitSlider(value: $timeWindowDuration, range: 1.0...300.0)
+                    }
+                }
+                
+                HStack {
+                    Text("Precision Scale:").font(.subheadline).frame(width: 120, alignment: .leading)
+                    UIKitSegmentedPicker(selection: $chartScaleLevel, items: ["Coarse", "Normal", "Fine"])
+                        .frame(height: 32)
+                }
+            }
+            .padding(.bottom, 5)
+            
+            // --- 数据过滤与X轴比例尺准备 ---
+            let allPoints = engine.chartPoints
+            let baseTime = allPoints.first?.timestamp ?? 0
+            let maxTime = allPoints.last?.timestamp ?? 0
+            
+            // 计算X轴的下限，以此筛选渲染点，并为Chart构建完美的Domain缩放
+            let minTime = timeRangeMode == 0 ? baseTime : max(baseTime, maxTime - timeWindowDuration)
+            let displayPoints = timeRangeMode == 0 ? allPoints : allPoints.filter { $0.timestamp >= minTime }
+            
+            let domainMin = minTime - baseTime
+            let domainMax = max(domainMin + 1.0, maxTime - baseTime) // 防止 domain 宽度为 0 导致崩溃
+            
+            // 动态高度解析（图表越高，Y轴显示精度就越好）
+            let chartHeight: CGFloat = chartScaleLevel == 0 ? 100 : (chartScaleLevel == 1 ? 160 : 260)
             
             if chartModeIndex == 0 {
-                // 模式 1：IMU 输入与 ML 输出对比
-                Label("Data Compare: IMU Input vs ML Output", systemImage: "waveform.path.ecg")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
+                // --- 模式 1：IMU 输入与 ML 输出对比 ---
                 let accX = engine.debugState.correctedAcc.x
                 let accY = engine.debugState.correctedAcc.y
                 let mlSpeed = hypot(engine.debugState.mlVelocity.x, engine.debugState.mlVelocity.y)
                 
-                DebugRow(icon: "waveform.path", title: "IMU Accel X", value: String(format: "%.3f", accX))
+                let avgAccX = displayPoints.isEmpty ? 0 : displayPoints.compactMap { $0.acceleration?.x }.reduce(0, +) / Double(displayPoints.count)
+                let avgAccY = displayPoints.isEmpty ? 0 : displayPoints.compactMap { $0.acceleration?.y }.reduce(0, +) / Double(displayPoints.count)
+                let avgSpeed = displayPoints.isEmpty ? 0 : displayPoints.map { $0.speed }.reduce(0, +) / Double(displayPoints.count)
+                
+                // 【核心修改】动态计算当前显示窗口内 Y 轴的最极值
+                let chart1Min = min(
+                    displayPoints.compactMap { $0.acceleration?.x }.min() ?? 0,
+                    displayPoints.compactMap { $0.acceleration?.y }.min() ?? 0,
+                    displayPoints.map { $0.speed }.min() ?? 0
+                )
+                let chart1Max = max(
+                    displayPoints.compactMap { $0.acceleration?.x }.max() ?? 0,
+                    displayPoints.compactMap { $0.acceleration?.y }.max() ?? 0,
+                    displayPoints.map { $0.speed }.max() ?? 0
+                )
+                let c1Span = max(chart1Max - chart1Min, 0.01) // 防止全0直线崩溃
+                let c1Domain = (chart1Min - c1Span * 0.1)...(chart1Max + c1Span * 0.1) // 留10%裕量
+                
+                DebugRow(icon: "waveform.path", title: "IMU Accel X", value: String(format: "%.3f (Avg: %.3f)", accX, avgAccX))
                     .foregroundColor(.green)
-                DebugRow(icon: "waveform.path", title: "IMU Accel Y", value: String(format: "%.3f", accY))
+                DebugRow(icon: "waveform.path", title: "IMU Accel Y", value: String(format: "%.3f (Avg: %.3f)", accY, avgAccY))
                     .foregroundColor(.yellow)
-                DebugRow(icon: "speedometer", title: "ML Output Speed", value: String(format: "%.3f", mlSpeed))
+                DebugRow(icon: "speedometer", title: "ML Output Speed", value: String(format: "%.3f (Avg: %.3f)", mlSpeed, avgSpeed))
                     .foregroundColor(.purple)
                 
                 if !engine.chartPoints.isEmpty {
                     Chart {
-                        let firstTime = engine.chartPoints.first?.timestamp ?? 0
-                        ForEach(engine.chartPoints) { point in
-                            let time = point.timestamp - firstTime
+                        ForEach(displayPoints) { point in
+                            let time = point.timestamp - baseTime
                             
                             LineMark(
                                 x: .value("Time", time),
@@ -428,35 +479,60 @@ struct MLInfoTabView: View {
                             )
                             .foregroundStyle(by: .value("Metric", "ML Speed"))
                         }
+                        
+                        // 绘制均值虚线
+                        RuleMark(y: .value("Avg Acc X", avgAccX))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            .foregroundStyle(.green.opacity(0.8))
+                        
+                        RuleMark(y: .value("Avg Acc Y", avgAccY))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            .foregroundStyle(.yellow.opacity(0.8))
+                            
+                        RuleMark(y: .value("Avg Speed", avgSpeed))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            .foregroundStyle(.purple.opacity(0.8))
                     }
                     .chartForegroundStyleScale([
                         "Acc X": .green,
                         "Acc Y": .yellow,
                         "ML Speed": .purple
                     ])
+                    .chartXScale(domain: domainMin...domainMax)
+                    .chartYScale(domain: c1Domain) // 强制覆写 Y 轴比例尺极值
                     .chartXAxis(.hidden)
-                    .frame(height: 100)
+                    .frame(height: chartHeight)
                 }
                 
             } else {
-                // 模式 2：NR 与 AR 输出对比（残差）
-                Label("Data Compare: NR vs AR Residuals", systemImage: "chart.xyaxis.line")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-            
+                // --- 模式 2：NR 与 AR 输出对比（残差）---
                 let xRes = engine.chartPoints.last?.resX ?? 0.0
                 let yRes = engine.chartPoints.last?.resY ?? 0.0
                 
-                DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m", xRes))
+                let avgXRes = displayPoints.isEmpty ? 0 : displayPoints.compactMap { $0.resX }.reduce(0, +) / Double(displayPoints.count)
+                let avgYRes = displayPoints.isEmpty ? 0 : displayPoints.compactMap { $0.resY }.reduce(0, +) / Double(displayPoints.count)
+                
+                // 【核心修改】动态计算当前显示窗口内 Y 轴的最极值
+                let chart2Min = min(
+                    displayPoints.compactMap { $0.resX }.min() ?? 0,
+                    displayPoints.compactMap { $0.resY }.min() ?? 0
+                )
+                let chart2Max = max(
+                    displayPoints.compactMap { $0.resX }.max() ?? 0,
+                    displayPoints.compactMap { $0.resY }.max() ?? 0
+                )
+                let c2Span = max(chart2Max - chart2Min, 0.01) // 防止全0直线崩溃
+                let c2Domain = (chart2Min - c2Span * 0.1)...(chart2Max + c2Span * 0.1) // 留10%裕量
+                
+                DebugRow(icon: "arrow.left.and.right", title: "X-Axis Residual", value: String(format: "%.3f m (Avg: %.3f)", xRes, avgXRes))
                     .foregroundColor(.blue)
-                DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m", yRes))
+                DebugRow(icon: "arrow.up.and.down", title: "Y-Axis Residual", value: String(format: "%.3f m (Avg: %.3f)", yRes, avgYRes))
                     .foregroundColor(.red)
                 
                 if !engine.chartPoints.isEmpty {
                     Chart {
-                        let firstTime = engine.chartPoints.first?.timestamp ?? 0
-                        ForEach(engine.chartPoints) { point in
-                            let time = point.timestamp - firstTime
+                        ForEach(displayPoints) { point in
+                            let time = point.timestamp - baseTime
                             
                             LineMark(
                                 x: .value("Time", time),
@@ -470,13 +546,24 @@ struct MLInfoTabView: View {
                             )
                             .foregroundStyle(by: .value("Axis", "Y Res"))
                         }
+                        
+                        // 绘制均值虚线
+                        RuleMark(y: .value("Avg X", avgXRes))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            .foregroundStyle(.blue.opacity(0.8))
+                            
+                        RuleMark(y: .value("Avg Y", avgYRes))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            .foregroundStyle(.red.opacity(0.8))
                     }
                     .chartForegroundStyleScale([
                         "X Res": .blue,
                         "Y Res": .red
                     ])
+                    .chartXScale(domain: domainMin...domainMax)
+                    .chartYScale(domain: c2Domain) // 强制覆写 Y 轴比例尺极值
                     .chartXAxis(.hidden)
-                    .frame(height: 100)
+                    .frame(height: chartHeight)
                 }
             }
             
